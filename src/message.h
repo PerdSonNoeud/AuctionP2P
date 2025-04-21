@@ -3,7 +3,7 @@
 #define SEPARATOR "|"
 /*
 +++++++++++++++++++++++++++++++++++++++++++++
-| CODE | ID | LMESS | MESS | LSIG | SIG |
+| CODE | ID | LMESS | MESS | LSIG | SIG 
 +++++++++++++++++++++++++++++++++++++++++++++
 */
 struct message {

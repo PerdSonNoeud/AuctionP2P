@@ -4,25 +4,65 @@
 #include <stdio.h>
 #include <string.h>
 
-
-void remplir_buffer(void* iMess, int iSize, int* iOffset, void* oBuffer) {
-    printf("remplir_buffer: iMess: %p, iSize: %d, iOffset: %d, oBuffer: %p\n", iMess, iSize, *iOffset, oBuffer);
-    if(iMess == NULL || oBuffer == NULL) {
-        perror("Error: iMess or oBuffer is NULL");
-        return;
-    }
-    memcpy(oBuffer + *iOffset, iMess, iSize);
-    *iOffset += iSize;
-    memcpy(oBuffer + *iOffset, SEPARATOR, sizeof(SEPARATOR));
-    *iOffset += sizeof(SEPARATOR);
-    printf("Buffer: %s\n", (char*)oBuffer);
+int nbDigits (int n) {
+    if (n < 10) return 1;
+    if (n < 100) return 2;
+    if (n < 1000) return 3;
+    if (n < 10000) return 4;
+    if (n < 100000) return 5;
+    return 0;
 }
 
+char* struct_to_buffer(struct message* iMess) {
+    if (iMess == NULL) {
+        perror("Error: iMess is NULL");
+        return NULL;
+    }
+
+    // Calculate the size of the resulting buffer
+    size_t buffer_size = 0;
+    buffer_size += nbDigits(iMess->code); // For CODE (max 3 digits)
+    buffer_size += nbDigits(iMess->id) + sizeof(char); // For ID (max 10 digits) + separator
+    buffer_size += nbDigits(iMess->lmess) + sizeof(char); // For LMESS (max 5 digits) + separator
+    buffer_size += iMess->lmess + sizeof(char); // For MESS + separator
+    buffer_size += nbDigits(iMess->lsig) + sizeof(char); // For LSIG (max 5 digits) + separator
+
+    if (iMess->lsig > 0) {
+        buffer_size += iMess->lsig + sizeof(char); // For SIG + separator
+    }
+    //buffer_size += sizeof(uint8_t) + sizeof(char); // For NB (max 5 digits) + separator
+
+    // Allocate memory for the buffer
+    buffer_size += 1; // +1 for ending null character
+    char* buffer = malloc(buffer_size);
+    if (buffer == NULL) {
+        perror("malloc failed");
+        return NULL;
+    }
+
+    // Fill the buffer with the serialized data
+    int offset = 0;
+    offset += snprintf(buffer + offset, buffer_size - offset, "%d", iMess->code);
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%u", iMess->id);
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%d", iMess->lmess);
+    printf("sizeof mess: %zu\n", buffer_size);
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%s", iMess->mess);
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%d", iMess->lsig);
+
+    if (iMess->lsig > 0) {
+        offset += snprintf(buffer + offset, buffer_size - offset, "|%s", iMess->sig);
+    }
+    //offset += snprintf(buffer + offset, buffer_size - offset, "%u", iMess->nb);
+
+    return buffer;
+}
+
+/*
 void* struct_to_buffer(struct message* iMess) {
     if(iMess == NULL) {
         return NULL;
     }
-    void* buffer = NULL;
+    char* buffer = NULL;
     switch (iMess->code) {
         case 1:
             if(iMess->mess == NULL) {
@@ -30,27 +70,32 @@ void* struct_to_buffer(struct message* iMess) {
                 return NULL;
             }
             if(iMess->lsig == 0) {
-                buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + 4*sizeof(char));
+                buffer = malloc(sizeof(uint8_t) + sizeof(iMess->mess) + sizeof(iMess->lmess) + sizeof(iMess->mess) + 4*sizeof(char));
             }
             else {
                 buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + sizeof(iMess->lsig) + sizeof(iMess->sig)+ 6*sizeof(char));
             }
             int offset = 0;
-            remplir_buffer(&iMess->code, sizeof(uint8_t), &offset, buffer);
-            remplir_buffer(&iMess->id, sizeof(iMess->id), &offset, buffer);
-            remplir_buffer(&iMess->lmess, sizeof(iMess->lmess), &offset, buffer);
-            remplir_buffer(iMess->mess, iMess->lmess, &offset, buffer);
-            if(iMess->lsig != 0) {
-                remplir_buffer(&iMess->lsig, sizeof(iMess->lsig), &offset, buffer);
-                remplir_buffer(iMess->sig, iMess->lsig, &offset, buffer);
-            }
             break;
-        
+
+        case 2:
+            if(iMess->mess == NULL) {
+                perror("Error: message is NULL");
+                return NULL;
+            }
+            if(iMess->lsig == 0) {
+                buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + sizeof(iMess->nb) + 6*sizeof(char));
+            }
+            else {
+                buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + sizeof(iMess->lsig) + sizeof(iMess->sig)+ sizeof(iMess->nb)+ 8*sizeof(char));
+            }
+            int offset2 = 0;
+            break;
         default:
             break;
     }
     return buffer;
-}
+}*/
 
 void buffer_to_struct(void* iBuffer, struct message* oMess) {
     if(iBuffer == NULL) {
@@ -66,11 +111,9 @@ void buffer_to_struct(void* iBuffer, struct message* oMess) {
     //code
     oMess->code = (uint8_t)atoi(token);
     token = strtok ( NULL, SEPARATOR );
-    printf("code: %d\n", oMess->code);
     //id
     oMess->id = (uint16_t)atoi(token);
     token = strtok ( NULL, SEPARATOR );
-    printf("id: %d\n", oMess->id);
     //lmess
     oMess->lmess = (uint8_t)atoi(token);
     token = strtok ( NULL, SEPARATOR );
@@ -97,11 +140,12 @@ int main(int argc, char const *argv[])
     struct message* mess = malloc(sizeof(struct message));
     mess->code = 1;
     mess->id = 1234;
-    mess->lmess = 5;
-    mess->mess = "Hello";
-    mess->lsig = 0;
-    mess->sig = NULL;
-    void* buff = struct_to_buffer(mess);
+    mess->lmess = sizeof(char) * 13;
+    mess->mess = "Hello world !";
+    mess->lsig = 5;
+    mess->sig = "Didou";
+    char* buff = struct_to_buffer(mess); 
+    printf("Buffer: %s\n", buff);
     struct message* mess2 = malloc(sizeof(struct message));
     buffer_to_struct(buff, mess2);
     afficher_message(mess2);
