@@ -48,63 +48,8 @@ int join_auction() {
         close(send_sock);
         return -1;
     }
-    
-    // Message de demande (CODE = 3)
-    uint8_t msg = 3;
-    
-    int attempt = 0;
-    int found = 0;
-    
-    while (attempt < MAX_ATTEMPTS && !found) {
-        // Envoyer demande
-        send_multicast(send_sock, system.liaison_addr, system.liaison_port, &msg, sizeof(msg));
-        printf("Sent join request (attempt %d)\n", attempt + 1);
-        
-        // Attendre réponse
-        fd_set readfds;
-        struct timeval tv;
-        
-        FD_ZERO(&readfds);
-        FD_SET(recv_sock, &readfds);
-        
-        tv.tv_sec = TIMEOUT;
-        tv.tv_usec = 0;
-        
-        if (select(recv_sock + 1, &readfds, NULL, NULL, &tv) > 0) {
-            // Si on reçoit quelque chose
-            uint8_t buffer[100];
-            struct sockaddr_in6 sender;
-            
-            int len = receive_multicast(recv_sock, buffer, sizeof(buffer), &sender);
-            if (len > 0 && buffer[0] == 4) {  // CODE = 4
-                found = 1;
-                printf("Found existing auction system!\n");
-                
-                // Extraire l'ID et l'adresse du pair qui a répondu
-                unsigned short peer_id = buffer[1] | (buffer[2] << 8);
-                struct in6_addr peer_ip;
-                memcpy(&peer_ip, &buffer[3], 16);
-                unsigned short peer_port = buffer[19] | (buffer[20] << 8);
-                
-                // Ajouter ce pair
-                add_pair(peer_id, peer_ip, peer_port);
-                
-                // TODO: Implémenter connexion TCP
-            }
-        } else {
-            attempt++;
-        }
-    }
-    
-    close(send_sock);
-    close(recv_sock);
-    
-    if (!found) {
-        printf("No auction system found, creating new one\n");
-        // Ajouter moi-même comme premier pair
-        add_pair(system.my_id, system.my_ip, system.my_port);
-        return 1;  // Nouveau système créé
-    }
+
+    //TODO : Envoyer une demande de rejoindre le système
     
     return 0;  // Système existant rejoint
 }
@@ -117,24 +62,13 @@ int handle_join(int sock) {
     if (len > 0 && buffer[0] == 3) {  // CODE = 3
         printf("Received join request\n");
         
-        // Préparer réponse (CODE = 4)
-        uint8_t response[21];
-        response[0] = 4;
-        response[1] = system.my_id & 0xFF;
-        response[2] = (system.my_id >> 8) & 0xFF;
-        memcpy(&response[3], &system.my_ip, 16);
-        response[19] = system.my_port & 0xFF;
-        response[20] = (system.my_port >> 8) & 0xFF;
+        // Répondre avec l'ID et l'adresse
         
         // Socket pour répondre
         int send_sock = socket(AF_INET6, SOCK_DGRAM, 0);
         if (send_sock < 0) return -1;
         
-        // Envoyer réponse en unicast
-        if (sendto(send_sock, response, sizeof(response), 0,
-                  (struct sockaddr*)&sender, sizeof(sender)) < 0) {
-            perror("sendto failed");
-        }
+        // Envoyer l'ID et l'adresse
         
         close(send_sock);
         return 1;
@@ -168,6 +102,5 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
     system.pairs[system.count].active = 1;
     system.count++;
     
-    printf("Added peer with ID %d\n", id);
     return 0;
 }
