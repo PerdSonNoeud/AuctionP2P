@@ -57,45 +57,73 @@ char* struct_to_buffer(struct message* iMess) {
     return buffer;
 }
 
-/*
-void* struct_to_buffer(struct message* iMess) {
+
+void* define_struct() {
+    struct message* iMess = malloc(sizeof(struct message));
     if(iMess == NULL) {
+        perror("Allocation ratée");
         return NULL;
     }
-    char* buffer = NULL;
     switch (iMess->code) {
+        /*+++++++++++++++++++++++++++++++++++++++++++++
+        | CODE = 1 | ID | LMESS | MESS | LSIG | SIG |
+        +++++++++++++++++++++++++++++++++++++++++++++*/
         case 1:
             if(iMess->mess == NULL) {
                 perror("Error: message is NULL");
                 return NULL;
             }
-            if(iMess->lsig == 0) {
-                buffer = malloc(sizeof(uint8_t) + sizeof(iMess->mess) + sizeof(iMess->lmess) + sizeof(iMess->mess) + 4*sizeof(char));
+            iMess->code = 1;
+            iMess->id = malloc(sizeof(uint16_t));
+            iMess->lmess = malloc(sizeof(uint8_t));
+            iMess->mess = malloc(sizeof(char) * iMess->lmess);
+            if(iMess->lsig != 0) {
+                iMess->lsig = malloc(sizeof(uint8_t));
+                iMess->sig = malloc(sizeof(char) * iMess->lsig);
             }
-            else {
-                buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + sizeof(iMess->lsig) + sizeof(iMess->sig)+ 6*sizeof(char));
-            }
-            int offset = 0;
             break;
 
         case 2:
+            /*++++++++++++++++++++++++++++++++++++++++++++++++++
+            | CODE = 2 | ID | LMESS | MESS | LSIG | SIG | NB |
+            ++++++++++++++++++++++++++++++++++++++++++++++++++*/
             if(iMess->mess == NULL) {
                 perror("Error: message is NULL");
                 return NULL;
             }
-            if(iMess->lsig == 0) {
-                buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + sizeof(iMess->nb) + 6*sizeof(char));
+            iMess->code = 2;
+            iMess->id = malloc(sizeof(uint16_t));
+            iMess->lmess = malloc(sizeof(uint8_t));
+            iMess->mess = malloc(sizeof(char) * iMess->lmess);
+            if(iMess->lsig != 0) {
+                iMess->lsig = malloc(sizeof(uint8_t));
+                iMess->sig = malloc(sizeof(char) * iMess->lsig);
             }
+            /*+++++++++++++++++++
+            | ID | LSIG | SIG |
+            +++++++++++++++++++*/
+            if(iMess->nb <= 3) {
+                for(int i = 0; i < iMess->nb; i++) {
+                    iMess->id = malloc(sizeof(uint16_t));
+                    iMess->lsig = malloc(sizeof(uint8_t));
+                    iMess->sig = malloc(sizeof(char) * iMess->lsig);
+                }
+            }
+            /*+++++++++++++++++++++++
+            | CODE = 20 | ID | NB |
+            +++++++++++++++++++++++*/
             else {
-                buffer = malloc(sizeof(iMess->code) + sizeof(iMess->id) + sizeof(iMess->lmess) + sizeof(iMess->mess) + sizeof(iMess->lsig) + sizeof(iMess->sig)+ sizeof(iMess->nb)+ 8*sizeof(char));
+                iMess->code = 20;
+                iMess->id = malloc(sizeof(uint16_t));
+                iMess->nb = malloc(sizeof(uint16_t));
             }
             int offset2 = 0;
             break;
         default:
             break;
     }
-    return buffer;
-}*/
+    return iMess;
+}
 
 void buffer_to_struct(void* iBuffer, struct message* oMess) {
     if(iBuffer == NULL) {
@@ -143,7 +171,7 @@ int main(int argc, char const *argv[])
     mess->lmess = sizeof(char) * 13;
     mess->mess = "Hello world !";
     mess->lsig = 5;
-    mess->sig = "Didou";
+    mess->sig = "32223";
     char* buff = struct_to_buffer(mess); 
     printf("Buffer: %s\n", buff);
     struct message* mess2 = malloc(sizeof(struct message));
