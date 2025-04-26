@@ -6,6 +6,9 @@
 #include "include/auction.h"
 
 int main(int argc, char *argv[]) {
-
-    printf("Hello, World!\n");
+  if (init_pairs() < 0) {
+    fprintf(stderr, "Failed to initialize pairs\n");
+    return EXIT_FAILURE;
+  }
+  fprintf(stderr, "Pairs initialized successfully\n");
 }
