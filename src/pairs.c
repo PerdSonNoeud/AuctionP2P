@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <errno.h>
 
 #define MAX_ATTEMPTS 3
 #define TIMEOUT 5
@@ -51,60 +52,94 @@ int join_auction() {
     return -1;
   }
 
-  // TODO : Envoyer une demande de rejoindre le système
+  // Envoyer une demande de rejoindre le système
   uint8_t request[100];
+  memset(request, 0, sizeof(request)); // Initialiser le buffer à 0
+  
   request[0] = 3; // CODE = 3
   memcpy(&request[1], &pSystem.my_id, sizeof(pSystem.my_id));
   memcpy(&request[3], &pSystem.my_ip, sizeof(pSystem.my_ip));
   memcpy(&request[19], &pSystem.my_port, sizeof(pSystem.my_port));
-  int len = send_multicast(send_sock, pSystem.liaison_addr,
+  
+  int result = send_multicast(send_sock, pSystem.liaison_addr,
                            pSystem.liaison_port, request, sizeof(request));
-  if (len < 0) {
+  if (result < 0) {
     close(send_sock);
     close(recv_sock);
     return -1;
   }
   printf("Join request sent\n");
-  close(send_sock);
-  // Attendre la réponse
+  
+  // Configuration du timeout
   struct timeval tv;
   tv.tv_sec = TIMEOUT;
   tv.tv_usec = 0;
   if (setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv,
                  sizeof tv) < 0) {
     perror("setsockopt failed");
+    close(send_sock);
+    close(recv_sock);
     return -1;
   }
+  
   // Attendre la réponse
   uint8_t buffer[100];
   struct sockaddr_in6 sender;
   int attempts = 0;
+  
   while (attempts < MAX_ATTEMPTS) {
+    memset(buffer, 0, sizeof(buffer)); // Initialiser le buffer
+    
     int len = receive_multicast(recv_sock, buffer, sizeof(buffer), &sender);
-    if (len > 0 && buffer[0] == 4) { // CODE = 4
-      printf("Join response received\n");
-      unsigned short id;
-      memcpy(&id, &buffer[1], sizeof(id));
-      struct in6_addr ip;
-      memcpy(&ip, &buffer[3], sizeof(ip));
-      unsigned short port;
-      memcpy(&port, &buffer[19], sizeof(port));
+    if (len > 0) {
+      if (buffer[0] == 4) { // CODE = 4 (réponse)
+        printf("Join response received\n");
+        unsigned short id;
+        memcpy(&id, &buffer[1], sizeof(id));
+        struct in6_addr ip;
+        memcpy(&ip, &buffer[3], sizeof(ip));
+        unsigned short port;
+        memcpy(&port, &buffer[19], sizeof(port));
 
-      // Ajouter le pair
-      add_pair(id, ip, port);
-      close(recv_sock);
-      return 0; // Système existant rejoint
+        // Afficher l'information du pair trouvé
+        char ip_str[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &ip, ip_str, sizeof(ip_str));
+        printf("Pair trouvé: ID=%d, IP=%s, Port=%d\n", id, ip_str, port);
+
+        // Ajouter le pair
+        add_pair(id, ip, port);
+        close(send_sock);
+        close(recv_sock);
+        return 0; // Système existant rejoint avec succès
+      } else {
+        printf("Message reçu mais code incorrect: %d\n", buffer[0]);
+      }
+    } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      printf("Timeout atteint, tentative %d/%d\n", attempts + 1, MAX_ATTEMPTS);
+    } else {
+      perror("receive_multicast failed");
     }
+    
     attempts++;
     if (attempts < MAX_ATTEMPTS) {
+      // Renvoyer la demande pour chaque nouvelle tentative
+      if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, 
+                       request, sizeof(request)) < 0) {
+        printf("Échec du renvoi de la demande\n");
+      } else {
+        printf("Demande de connexion renvoyée (tentative %d/%d)\n", 
+               attempts + 1, MAX_ATTEMPTS);
+      }
+      
       sleep(1); // Attendre avant de réessayer
     } else {
       printf("Max attempts reached, no response received\n");
-      return -1; // Pas de réponse
     }
   }
 
-  return -1; // Système existant rejoint
+  close(send_sock);
+  close(recv_sock);
+  return -1; // Échec de connexion
 }
 
 int handle_join(int sock) {
@@ -112,18 +147,54 @@ int handle_join(int sock) {
   struct sockaddr_in6 sender;
 
   int len = receive_multicast(sock, buffer, sizeof(buffer), &sender);
-  if (len > 0 && buffer[0] == 3) { // CODE = 3
+  if (len > 0 && buffer[0] == 3) { // CODE = 3 pour demande de jointure
     printf("Received join request\n");
 
-    // Répondre avec l'ID et l'adresse
+    // Extraire les informations du demandeur
+    unsigned short requester_id;
+    memcpy(&requester_id, &buffer[1], sizeof(requester_id));
+    
+    struct in6_addr requester_ip;
+    memcpy(&requester_ip, &buffer[3], sizeof(requester_ip));
+    
+    unsigned short requester_port;
+    memcpy(&requester_port, &buffer[19], sizeof(requester_port));
+    
+    // Afficher les infos du demandeur
+    char requester_ip_str[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &requester_ip, requester_ip_str, sizeof(requester_ip_str));
+    printf("Demande de connexion de ID=%d, IP=%s, Port=%d\n", 
+           requester_id, requester_ip_str, requester_port);
 
-    // Socket pour répondre
-    int send_sock = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (send_sock < 0)
+    // Ajouter ce pair à notre liste
+    add_pair(requester_id, requester_ip, requester_port);
+    
+    // Créer un socket pour envoyer la réponse
+    int send_sock = setup_multicast_sender();
+    if (send_sock < 0) {
+      perror("setup_multicast_sender failed");
       return -1;
+    }
 
-    // Envoyer l'ID et l'adresse
-
+    // Préparer la réponse
+    uint8_t response[100];
+    memset(response, 0, sizeof(response)); // Initialiser le buffer à 0
+    
+    response[0] = 4; // CODE = 4 pour réponse à une demande de jointure
+    memcpy(&response[1], &pSystem.my_id, sizeof(pSystem.my_id));
+    memcpy(&response[3], &pSystem.my_ip, sizeof(pSystem.my_ip));
+    memcpy(&response[19], &pSystem.my_port, sizeof(pSystem.my_port));
+    
+    // Envoyer la réponse
+    printf("Envoi de la réponse au demandeur...\n");
+    if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, 
+                      response, sizeof(response)) < 0) {
+      perror("send_multicast failed");
+      close(send_sock);
+      return -1;
+    }
+    
+    printf("Réponse envoyée avec succès\n");
     close(send_sock);
     return 1;
   }
@@ -132,31 +203,34 @@ int handle_join(int sock) {
 }
 
 int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
-  // Vérifier si déjà présent
+  // Vérifier si le pair existe déjà
   for (int i = 0; i < pSystem.count; i++) {
     if (pSystem.pairs[i].id == id) {
+      // Mettre à jour les informations du pair existant
       pSystem.pairs[i].ip = ip;
       pSystem.pairs[i].port = port;
       pSystem.pairs[i].active = 1;
       return 0;
     }
   }
-
-  // Ajouter nouveau pair
+  
+  // Ajouter un nouveau pair
   if (pSystem.count >= pSystem.capacity) {
-    Pair *new_pairs =
-        realloc(pSystem.pairs, pSystem.capacity * 2 * sizeof(Pair));
-    if (!new_pairs)
+    int new_capacity = pSystem.capacity * 2;
+    Pair *new_pairs = realloc(pSystem.pairs, new_capacity * sizeof(Pair));
+    if (!new_pairs) {
+      perror("realloc failed");
       return -1;
+    }
     pSystem.pairs = new_pairs;
-    pSystem.capacity *= 2;
+    pSystem.capacity = new_capacity;
   }
-
+  
   pSystem.pairs[pSystem.count].id = id;
   pSystem.pairs[pSystem.count].ip = ip;
   pSystem.pairs[pSystem.count].port = port;
   pSystem.pairs[pSystem.count].active = 1;
   pSystem.count++;
-
+  
   return 0;
 }
