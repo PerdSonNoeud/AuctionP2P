@@ -163,7 +163,7 @@ void buffer_to_struct(void* iBuffer, struct message* oMess) {
     token = strtok ( NULL, SEPARATOR );
 }
 
-int main(int argc, char const *argv[])
+/*int main(int argc, char const *argv[])
 {
     struct message* mess = malloc(sizeof(struct message));
     mess->code = 1;
@@ -178,4 +178,4 @@ int main(int argc, char const *argv[])
     buffer_to_struct(buff, mess2);
     afficher_message(mess2);
     return 0;
-}
+}*/

@@ -17,7 +17,7 @@ PairSystem pSystem;
 int init_pairs() {
   pSystem.pairs = malloc(10 * sizeof(Pair));
   if (!pSystem.pairs) {
-    perror("malloc failed");
+    perror("malloc a échoué");
     return -1;
   }
 
@@ -68,7 +68,7 @@ int join_auction() {
     close(recv_sock);
     return -1;
   }
-  printf("Join request sent\n");
+  printf("Demande de connexion envoyée\n");
   
   // Configuration du timeout
   struct timeval tv;
@@ -76,7 +76,7 @@ int join_auction() {
   tv.tv_usec = 0;
   if (setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv,
                  sizeof tv) < 0) {
-    perror("setsockopt failed");
+    perror("setsockopt a échoué");
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -93,7 +93,7 @@ int join_auction() {
     int len = receive_multicast(recv_sock, buffer, sizeof(buffer), &sender);
     if (len > 0) {
       if (buffer[0] == 4) { // CODE = 4 (réponse)
-        printf("Join response received\n");
+        printf("Réponse de connexion reçue\n");
         unsigned short id;
         memcpy(&id, &buffer[1], sizeof(id));
         struct in6_addr ip;
@@ -117,7 +117,7 @@ int join_auction() {
     } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
       printf("Timeout atteint, tentative %d/%d\n", attempts + 1, MAX_ATTEMPTS);
     } else {
-      perror("receive_multicast failed");
+      perror("receive_multicast a échoué");
     }
     
     attempts++;
@@ -133,7 +133,7 @@ int join_auction() {
       
       sleep(1); // Attendre avant de réessayer
     } else {
-      printf("Max attempts reached, no response received\n");
+      printf("Nombre maximal de tentatives atteint, aucune réponse reçue\n");
     }
   }
 
@@ -148,7 +148,7 @@ int handle_join(int sock) {
 
   int len = receive_multicast(sock, buffer, sizeof(buffer), &sender);
   if (len > 0 && buffer[0] == 3) { // CODE = 3 pour demande de jointure
-    printf("Received join request\n");
+    printf("Demande de connexion reçue\n");
 
     // Extraire les informations du demandeur
     unsigned short requester_id;
@@ -172,7 +172,7 @@ int handle_join(int sock) {
     // Créer un socket pour envoyer la réponse
     int send_sock = setup_multicast_sender();
     if (send_sock < 0) {
-      perror("setup_multicast_sender failed");
+      perror("setup_multicast_sender a échoué");
       return -1;
     }
 
@@ -189,7 +189,7 @@ int handle_join(int sock) {
     printf("Envoi de la réponse au demandeur...\n");
     if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, 
                       response, sizeof(response)) < 0) {
-      perror("send_multicast failed");
+      perror("send_multicast a échoué");
       close(send_sock);
       return -1;
     }
@@ -219,7 +219,7 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
     int new_capacity = pSystem.capacity * 2;
     Pair *new_pairs = realloc(pSystem.pairs, new_capacity * sizeof(Pair));
     if (!new_pairs) {
-      perror("realloc failed");
+      perror("realloc a échoué");
       return -1;
     }
     pSystem.pairs = new_pairs;

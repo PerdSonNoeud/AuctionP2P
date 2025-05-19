@@ -6,7 +6,7 @@
 
 void afficher_message(struct message* iMess) {
     if (iMess == NULL) {
-        printf("Message is NULL\n");
+        printf("Le Message est NULL\n");
         return;
     }
     printf("Message:\n");
