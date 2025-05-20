@@ -5,7 +5,6 @@
 #include <pthread.h>
 #include <sys/select.h>
 #include <arpa/inet.h>
-#include "include/pairs.h"
 #include "include/auction.h"
 #include "include/multicast.h"
 
@@ -213,7 +212,7 @@ void join_network() {
 }
 
 // Fonction principale
-int main(int argc, char *argv[]) {
+int main() {
     int choice;
 
     printf("=== Application P2P ===\n\n");

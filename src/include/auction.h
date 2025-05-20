@@ -22,7 +22,7 @@ typedef struct {
 // Fonctions de gestion des enchères
 int init_auction_system();
 void cleanup_auction_system();
-unsigned int init_auction(struct Pair *creator, unsigned int initial_price);
+unsigned int init_auction(Pair *creator, unsigned int initial_price);
 void start_auction(unsigned int auction_id);
 int is_auction_finished(unsigned int auction_id);
 int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int bid_price);

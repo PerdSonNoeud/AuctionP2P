@@ -6,8 +6,7 @@
 #include <pthread.h>
 #include "include/auction.h"
 #include "include/multicast.h"
-#include "include/pairs.h"
-#include "message.h"
+#include "include/message.h"
 
 AuctionSystem auctionSys;
 
@@ -43,7 +42,7 @@ unsigned int init_auction(Pair *creator, unsigned int initial_price) {
     new_auction->auction_id = auctionSys.count;
     new_auction->creator_id =  creator->id;
     new_auction->initial_price = initial_price;
-    new_auction->current_price = initial_price; 
+    new_auction->current_price = initial_price;
     new_auction->last_bid_time = time(NULL);
 
     return new_auction->auction_id;
@@ -52,56 +51,56 @@ unsigned int init_auction(Pair *creator, unsigned int initial_price) {
 void start_auction(unsigned int auction_id) {
     Auction *auction = &auctionSys.auctions[auction_id - 1]; // -1 car les IDs commencent à 1
     auction->start_time = time(NULL);
-    
+
     // Annoncer la nouvelle vente au réseau
     int send_sock = setup_multicast_sender();
     if (send_sock < 0) {
         perror("Échec de création du socket d'envoi multicast");
         return;
     }
-    
+
     // Préparer le message d'annonce de nouvelle vente (CODE_NOUVELLE_VENTE = 8)
     uint8_t message[100];
     memset(message, 0, sizeof(message));
-    
+
     extern PairSystem pSystem;
     message[0] = 8; // CODE_NOUVELLE_VENTE
     memcpy(&message[1], &pSystem.my_id, sizeof(pSystem.my_id));
     memcpy(&message[3], &auction->auction_id, sizeof(auction->auction_id));
     memcpy(&message[7], &auction->initial_price, sizeof(auction->initial_price));
-    
+
     // Envoyer le message à l'adresse d'enchères
-    if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, 
+    if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port,
                      message, sizeof(message)) < 0) {
         perror("Échec de l'envoi de l'annonce de nouvelle vente");
     } else {
-        printf("Nouvelle vente %u lancée avec prix initial %u\n", 
+        printf("Nouvelle vente %u lancée avec prix initial %u\n",
                auction_id, auction->initial_price);
     }
-    
+
     close(send_sock);
 }
 
 // Fonction pour vérifier si une enchère est terminée
 int is_auction_finished(unsigned int auction_id) {
-    if (auction_id == 0 || auction_id > auctionSys.count) {
+    if (auction_id == 0 || (int) auction_id > auctionSys.count) {
         return -1; // Enchère inexistante
     }
-    
+
     Auction *auction = &auctionSys.auctions[auction_id - 1];
     time_t now = time(NULL);
-    
+
     // Si aucune enchère depuis AUCTION_TIMEOUT secondes, l'enchère est terminée
     if (difftime(now, auction->last_bid_time) > AUCTION_TIMEOUT) {
         return 1; // Enchère terminée
     }
-    
+
     return 0; // Enchère en cours
 }
 
 // Fonction pour valider une enchère
 int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int bid_price) {
-    if (auction_id == 0 || auction_id > auctionSys.count) {
+    if (auction_id == 0 || (int) auction_id > auctionSys.count) {
         printf("Erreur: Enchère %u inexistante\n", auction_id);
         return -1;
     }
