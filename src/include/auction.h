@@ -8,25 +8,25 @@
 /**
  * @brief Structure to store auction information
  */
-typedef struct {
-    unsigned int auction_id;        // Auction identifier
-    unsigned short creator_id;      // Creator peer identifier
-    unsigned int initial_price;     // Initial auction price
-    unsigned int current_price;     // Current auction price (last valid bid)
-    unsigned short id_dernier_prop; // Identifier of the peer who made the last bid
-    time_t start_time;              // Auction start time
-    time_t last_bid_time;           // Last bid timestamp
-    // Potential additional fields for supervisor, etc.
-} Auction;
+struct Auction {
+  unsigned int auction_id;        // Auction identifier
+  unsigned short creator_id;      // Creator peer identifier
+  unsigned int initial_price;     // Initial auction price
+  unsigned int current_price;     // Current auction price (last valid bid)
+  unsigned short id_dernier_prop; // Identifier of the peer who made the last bid
+  time_t start_time;              // Auction start time
+  time_t last_bid_time;           // Last bid timestamp
+  // Potential additional fields for supervisor, etc.
+};
 
 /**
  * @brief Structure to manage multiple auctions
  */
-typedef struct {
-    Auction *auctions;    // Array of auctions
-    int count;            // Current number of auctions
-    int capacity;         // Maximum capacity of the auctions array
-} AuctionSystem;
+struct AuctionSystem {
+  struct Auction *auctions;    // Array of auctions
+  int count;            // Current number of auctions
+  int capacity;         // Maximum capacity of the auctions array
+};
 
 /**
  * @brief Initialize the auction system
@@ -53,7 +53,7 @@ void cleanup_auction_system();
  * @param initial_price Starting price for the auction
  * @return The auction identifier on success, 0 on failure
  */
-unsigned int init_auction(Pair *creator, unsigned int initial_price);
+unsigned int init_auction(struct Pair *creator, unsigned int initial_price);
 
 /**
  * @brief Start an auction

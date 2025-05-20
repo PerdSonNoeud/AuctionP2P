@@ -6,28 +6,28 @@
 /**
  * @brief Structure to store peer information
  */
-typedef struct {
-    unsigned short id;      // Peer identifier
-    struct in6_addr ip;     // Peer IPv6 address
-    unsigned short port;    // Peer communication port
-    int active;             // Peer status (1 = active, 0 = inactive)
-} Pair;
+struct Pair {
+  unsigned short id;      // Peer identifier
+  struct in6_addr ip;     // Peer IPv6 address
+  unsigned short port;    // Peer communication port
+  int active;             // Peer status (1 = active, 0 = inactive)
+};
 
 /**
  * @brief Structure to manage the P2P system
  */
-typedef struct {
-    Pair *pairs;                // Array of peers
-    int count;                  // Current number of peers
-    int capacity;               // Maximum capacity of the peers array
-    unsigned short my_id;       // Local peer identifier
-    struct in6_addr my_ip;      // Local peer IPv6 address
-    unsigned short my_port;     // Local peer communication port
-    char liaison_addr[46];      // Multicast liaison address
-    int liaison_port;           // Multicast liaison port
-    char auction_addr[46];      // Multicast auction address
-    int auction_port;           // Multicast auction port
-} PairSystem;
+struct PairSystem {
+  struct Pair *pairs;                // Array of peers
+  int count;                  // Current number of peers
+  int capacity;               // Maximum capacity of the peers array
+  unsigned short my_id;       // Local peer identifier
+  struct in6_addr my_ip;      // Local peer IPv6 address
+  unsigned short my_port;     // Local peer communication port
+  char liaison_addr[46];      // Multicast liaison address
+  int liaison_port;           // Multicast liaison port
+  char auction_addr[46];      // Multicast auction address
+  int auction_port;           // Multicast auction port
+};
 
 /**
  * @brief Initialize the peer system

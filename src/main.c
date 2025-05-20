@@ -12,7 +12,7 @@
 int running = 1;
 int recv_sock = -1;
 int send_sock = -1;
-extern PairSystem pSystem;  // Déclarer pSystem comme externe
+extern struct PairSystem pSystem;  // Déclarer pSystem comme externe
 
 // Fonction pour créer un nouveau réseau P2P
 void create_network() {
@@ -65,12 +65,12 @@ void create_network() {
     running = 1;
     while (running) {
         int poll_result = poll(fds, 2, 1000); // Timeout de 1 seconde
-        
+
         if (poll_result < 0) {
             perror("Erreur lors de l'appel à poll");
             break;
         }
-        
+
         // Vérifier si des données sont disponibles sur le socket réseau
         if (fds[0].revents & POLLIN) {
             int result = handle_join(recv_sock);
@@ -88,7 +88,7 @@ void create_network() {
                 }
             }
         }
-        
+
         // Vérifier si des données sont disponibles sur stdin
         if (fds[1].revents & POLLIN) {
             char input;

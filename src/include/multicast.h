@@ -21,9 +21,11 @@ int setup_multicast_receiver(const char *addr, int port);
  *
  * Creates and configures a socket to send multicast packets.
  *
+ * @param addr Multicast group address
+ * @param port Multicast port number
  * @return Socket file descriptor on success, negative value on error
  */
-int setup_multicast_sender();
+int setup_multicast_sender(const char *addr, int port);
 
 /**
  * @brief Send data to a multicast group

@@ -2,6 +2,8 @@
 #define MESSAGE_H
 
 #include <stdint.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 /**
  * Message codes for network communication
@@ -33,26 +35,26 @@
  * Format: CODE | ID | LMESS | MESS | LSIG | SIG
  */
 struct message {
-    uint8_t code;       // Message type code
-    uint16_t id;        // Peer ID
-    uint8_t lmess;      // Message length
-    char* mess;         // Message content
-    uint8_t lsig;       // Signature length
-    char* sig;          // Signature content
-    __int128 ip;        // IP address
-    uint16_t port;      // Port number
-    char* cle;          // Key
-    uint32_t numv;      // Auction number
-    uint32_t prix;      // Price
-    uint16_t nb;        // Number of elements
+  uint8_t code;         // Message type code
+  uint16_t id;          // Peer ID
+  uint8_t lmess;        // Message length
+  char* mess;           // Message content
+  uint8_t lsig;         // Signature length
+  char* sig;            // Signature content
+  struct in6_addr ip;   // IP address
+  uint16_t port;        // Port number
+  char cle[60];         // Key
+  uint32_t numv;        // Auction number
+  uint32_t prix;        // Price
+  uint16_t nb;          // Number of elements
 };
 
 /**
  * @brief Display the content of a message
  *
- * @param iMess Pointer to the message to display
+ * @param msg Pointer to the message to display
  */
-void afficher_message(struct message* iMess);
+void afficher_message(struct message* msg);
 
 /**
  * @brief Create a new message structure with the given code
@@ -60,6 +62,59 @@ void afficher_message(struct message* iMess);
  * @param code The code to set in the message (see defines above)
  * @return Pointer to the newly created message
  */
-struct message* new_message(const int code);
+struct message* init_message(const int code);
+
+/**
+ * @brief Set the message in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param mess The message to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_mess(struct message* msg, const char* mess);
+
+/**
+ * @brief Set the signature in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param sig The signature to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_sig(struct message* msg, const char* sig);
+
+/**
+ * @brief Set the ip address in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param ip The ip address to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_ip(struct message* msg, struct in6_addr ip);
+
+/**
+ * @brief Set the port in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param port The port to set
+ * @return 0 on success, -1 on error
+ */
+ int message_set_port(struct message* msg, uint16_t port);
+
+/**
+* @brief Set the key in the message structure
+*
+* @param msg Pointer to the message to modify
+* @param cle The key to set
+* @return 0 on success, -1 on error
+*/
+int message_set_cle(struct message* msg, const char* cle);
+
+/**
+ * @brief Free the memory allocated for a message structure
+ *
+ * @param msg Pointer to the message to free
+ * @return 0 on success, -1 on error
+ */
+int free_message(struct message* msg);
 
 #endif /* MESSAGE_H */

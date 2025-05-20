@@ -12,10 +12,10 @@
 #define MAX_ATTEMPTS 3
 #define TIMEOUT 5
 
-PairSystem pSystem;
+struct PairSystem pSystem;
 
 int init_pairs() {
-  pSystem.pairs = malloc(10 * sizeof(Pair));
+  pSystem.pairs = malloc(10 * sizeof(struct Pair));
   if (!pSystem.pairs) {
     perror("malloc a échoué");
     return -1;
@@ -41,12 +41,10 @@ int init_pairs() {
 int join_auction() {
   // Socket pour envoyer
   int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-    return -1;
+  if (send_sock < 0) return -1;
 
   // Socket pour recevoir
-  int recv_sock =
-      setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
+  int recv_sock = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
   if (recv_sock < 0) {
     close(send_sock);
     return -1;
@@ -55,41 +53,39 @@ int join_auction() {
   // Envoyer une demande de rejoindre le système
   uint8_t request[100];
   memset(request, 0, sizeof(request)); // Initialiser le buffer à 0
-  
+
   request[0] = 3; // CODE = 3
   memcpy(&request[1], &pSystem.my_id, sizeof(pSystem.my_id));
   memcpy(&request[3], &pSystem.my_ip, sizeof(pSystem.my_ip));
   memcpy(&request[19], &pSystem.my_port, sizeof(pSystem.my_port));
-  
-  int result = send_multicast(send_sock, pSystem.liaison_addr,
-                           pSystem.liaison_port, request, sizeof(request));
+
+  int result = send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, request, sizeof(request));
   if (result < 0) {
     close(send_sock);
     close(recv_sock);
     return -1;
   }
   printf("Demande de connexion envoyée\n");
-  
+
   // Configuration du timeout
   struct timeval tv;
   tv.tv_sec = TIMEOUT;
   tv.tv_usec = 0;
-  if (setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv,
-                 sizeof tv) < 0) {
+  if (setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv) < 0) {
     perror("setsockopt a échoué");
     close(send_sock);
     close(recv_sock);
     return -1;
   }
-  
+
   // Attendre la réponse
   uint8_t buffer[100];
   struct sockaddr_in6 sender;
   int attempts = 0;
-  
+
   while (attempts < MAX_ATTEMPTS) {
     memset(buffer, 0, sizeof(buffer)); // Initialiser le buffer
-    
+
     int len = receive_multicast(recv_sock, buffer, sizeof(buffer), &sender);
     if (len > 0) {
       if (buffer[0] == 4) { // CODE = 4 (réponse)
@@ -119,18 +115,16 @@ int join_auction() {
     } else {
       perror("receive_multicast a échoué");
     }
-    
+
     attempts++;
     if (attempts < MAX_ATTEMPTS) {
       // Renvoyer la demande pour chaque nouvelle tentative
-      if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, 
-                       request, sizeof(request)) < 0) {
+      if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, request, sizeof(request)) < 0) {
         printf("Échec du renvoi de la demande\n");
       } else {
-        printf("Demande de connexion renvoyée (tentative %d/%d)\n", 
-               attempts + 1, MAX_ATTEMPTS);
+        printf("Demande de connexion renvoyée (tentative %d/%d)\n", attempts + 1, MAX_ATTEMPTS);
       }
-      
+
       sleep(1); // Attendre avant de réessayer
     } else {
       printf("Nombre maximal de tentatives atteint, aucune réponse reçue\n");
@@ -153,22 +147,21 @@ int handle_join(int sock) {
     // Extraire les informations du demandeur
     unsigned short requester_id;
     memcpy(&requester_id, &buffer[1], sizeof(requester_id));
-    
+
     struct in6_addr requester_ip;
     memcpy(&requester_ip, &buffer[3], sizeof(requester_ip));
-    
+
     unsigned short requester_port;
     memcpy(&requester_port, &buffer[19], sizeof(requester_port));
-    
+
     // Afficher les infos du demandeur
     char requester_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &requester_ip, requester_ip_str, sizeof(requester_ip_str));
-    printf("Demande de connexion de ID=%d, IP=%s, Port=%d\n", 
-           requester_id, requester_ip_str, requester_port);
+    printf("Demande de connexion de ID=%d, IP=%s, Port=%d\n", requester_id, requester_ip_str, requester_port);
 
     // Ajouter ce pair à notre liste
     add_pair(requester_id, requester_ip, requester_port);
-    
+
     // Créer un socket pour envoyer la réponse
     int send_sock = setup_multicast_sender();
     if (send_sock < 0) {
@@ -179,21 +172,21 @@ int handle_join(int sock) {
     // Préparer la réponse
     uint8_t response[100];
     memset(response, 0, sizeof(response)); // Initialiser le buffer à 0
-    
+
     response[0] = 4; // CODE = 4 pour réponse à une demande de jointure
     memcpy(&response[1], &pSystem.my_id, sizeof(pSystem.my_id));
     memcpy(&response[3], &pSystem.my_ip, sizeof(pSystem.my_ip));
     memcpy(&response[19], &pSystem.my_port, sizeof(pSystem.my_port));
-    
+
     // Envoyer la réponse
     printf("Envoi de la réponse au demandeur...\n");
-    if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, 
+    if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port,
                       response, sizeof(response)) < 0) {
       perror("send_multicast a échoué");
       close(send_sock);
       return -1;
     }
-    
+
     printf("Réponse envoyée avec succès\n");
     close(send_sock);
     return 1;
@@ -213,11 +206,11 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
       return 0;
     }
   }
-  
+
   // Ajouter un nouveau pair
   if (pSystem.count >= pSystem.capacity) {
     int new_capacity = pSystem.capacity * 2;
-    Pair *new_pairs = realloc(pSystem.pairs, new_capacity * sizeof(Pair));
+    struct Pair *new_pairs = realloc(pSystem.pairs, new_capacity * sizeof(struct Pair));
     if (!new_pairs) {
       perror("realloc a échoué");
       return -1;
@@ -225,12 +218,12 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
     pSystem.pairs = new_pairs;
     pSystem.capacity = new_capacity;
   }
-  
+
   pSystem.pairs[pSystem.count].id = id;
   pSystem.pairs[pSystem.count].ip = ip;
   pSystem.pairs[pSystem.count].port = port;
   pSystem.pairs[pSystem.count].active = 1;
   pSystem.count++;
-  
+
   return 0;
 }
