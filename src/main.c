@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <sys/select.h>
 #include <arpa/inet.h>
+#include <poll.h>
 #include "include/auction.h"
 #include "include/multicast.h"
 
@@ -13,44 +13,6 @@ int running = 1;
 int recv_sock = -1;
 int send_sock = -1;
 extern PairSystem pSystem;  // Déclarer pSystem comme externe
-
-// Fonction pour le thread qui écoute les messages entrants
-void* listener_thread(void* arg) {
-    int sock = *(int*)arg;
-    fd_set readfds;
-    struct timeval tv;
-
-    while(running) {
-        FD_ZERO(&readfds);
-        FD_SET(sock, &readfds);
-
-        // Timeout pour vérifier running périodiquement
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
-
-        int activity = select(sock + 1, &readfds, NULL, NULL, &tv);
-
-        if (activity > 0) {
-            // Message reçu - traiter avec handle_join
-            int result = handle_join(sock);
-            if (result > 0) {
-                printf("Demande de connexion reçue et traitée\n");
-            }
-
-            // Afficher les pairs connectés
-            printf("\nPairs actuellement connectés: %d\n", pSystem.count);
-            for (int i = 0; i < pSystem.count; i++) {
-                char ip_str[INET6_ADDRSTRLEN];
-                inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
-                printf("Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
-                       i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
-                       pSystem.pairs[i].active ? "Oui" : "Non");
-            }
-        }
-    }
-
-    return NULL;
-}
 
 // Fonction pour créer un nouveau réseau P2P
 void create_network() {
@@ -87,28 +49,56 @@ void create_network() {
     printf("Adresse multicast: %s:%d\n", pSystem.liaison_addr, pSystem.liaison_port);
     printf("\nEn attente de connexions...\n");
 
-    // Créer un thread pour écouter les demandes de connexion
-    running = 1;  // Réinitialiser running au cas où
-    pthread_t thread_id;
-    if (pthread_create(&thread_id, NULL, listener_thread, &recv_sock) != 0) {
-        fprintf(stderr, "Échec de la création du thread d'écoute\n");
-        close(recv_sock);
-        close(send_sock);
-        return;
-    }
-
-    // Attendre l'entrée utilisateur pour quitter
+    // Configuration pour poll
+    struct pollfd fds[2];
+    
+    // Surveillance du socket réseau
+    fds[0].fd = recv_sock;
+    fds[0].events = POLLIN;
+    
+    // Surveillance de l'entrée standard (pour détecter la commande de sortie)
+    fds[1].fd = STDIN_FILENO;
+    fds[1].events = POLLIN;
+    
     printf("\nAppuyez sur 'q' et Entrée pour quitter le programme\n");
-    char input;
+    
+    running = 1;
     while (running) {
-        scanf(" %c", &input);
-        if (input == 'q' || input == 'Q') {
-            running = 0;
+        int poll_result = poll(fds, 2, 1000); // Timeout de 1 seconde
+        
+        if (poll_result < 0) {
+            perror("Erreur lors de l'appel à poll");
+            break;
+        }
+        
+        // Vérifier si des données sont disponibles sur le socket réseau
+        if (fds[0].revents & POLLIN) {
+            int result = handle_join(recv_sock);
+            if (result > 0) {
+                printf("Demande de connexion reçue et traitée\n");
+                
+                // Afficher les pairs connectés
+                printf("\nPairs actuellement connectés: %d\n", pSystem.count);
+                for (int i = 0; i < pSystem.count; i++) {
+                    char ip_str[INET6_ADDRSTRLEN];
+                    inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
+                    printf("Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
+                           i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
+                           pSystem.pairs[i].active ? "Oui" : "Non");
+                }
+            }
+        }
+        
+        // Vérifier si des données sont disponibles sur stdin
+        if (fds[1].revents & POLLIN) {
+            char input;
+            if (read(STDIN_FILENO, &input, 1) > 0) {
+                if (input == 'q' || input == 'Q') {
+                    running = 0;
+                }
+            }
         }
     }
-
-    // Attendre que le thread se termine
-    pthread_join(thread_id, NULL);
 
     // Petit délai avant de fermer les sockets pour éviter les problèmes de réutilisation
     sleep(1);
@@ -176,30 +166,58 @@ void join_network() {
         return;
     }
 
-    // Créer un thread pour écouter les messages du réseau
-    running = 1;  // Réinitialiser running au cas où
-    pthread_t thread_id;
-    if (pthread_create(&thread_id, NULL, listener_thread, &recv_sock) != 0) {
-        fprintf(stderr, "Échec de la création du thread d'écoute\n");
-        close(recv_sock);
-        close(send_sock);
-        return;
-    }
-
+    // Configuration pour poll
+    struct pollfd fds[2];
+    
+    // Surveillance du socket réseau
+    fds[0].fd = recv_sock;
+    fds[0].events = POLLIN;
+    
+    // Surveillance de l'entrée standard (pour détecter la commande de sortie)
+    fds[1].fd = STDIN_FILENO;
+    fds[1].events = POLLIN;
+    
     // Attendre l'entrée utilisateur pour quitter
     printf("\nVous êtes maintenant connecté au réseau P2P\n");
     printf("Appuyez sur 'q' et Entrée pour quitter le programme\n");
 
-    char input;
+    running = 1;
     while (running) {
-        scanf(" %c", &input);
-        if (input == 'q' || input == 'Q') {
-            running = 0;
+        int poll_result = poll(fds, 2, 1000); // Timeout de 1 seconde
+        
+        if (poll_result < 0) {
+            perror("Erreur lors de l'appel à poll");
+            break;
+        }
+        
+        // Vérifier si des données sont disponibles sur le socket réseau
+        if (fds[0].revents & POLLIN) {
+            int result = handle_join(recv_sock);
+            if (result > 0) {
+                printf("Demande de connexion reçue et traitée\n");
+                
+                // Afficher les pairs connectés
+                printf("\nPairs actuellement connectés: %d\n", pSystem.count);
+                for (int i = 0; i < pSystem.count; i++) {
+                    char ip_str[INET6_ADDRSTRLEN];
+                    inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
+                    printf("Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
+                           i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
+                           pSystem.pairs[i].active ? "Oui" : "Non");
+                }
+            }
+        }
+        
+        // Vérifier si des données sont disponibles sur stdin
+        if (fds[1].revents & POLLIN) {
+            char input;
+            if (read(STDIN_FILENO, &input, 1) > 0) {
+                if (input == 'q' || input == 'Q') {
+                    running = 0;
+                }
+            }
         }
     }
-
-    // Attendre que le thread se termine
-    pthread_join(thread_id, NULL);
 
     // Petit délai avant de fermer les sockets pour éviter les problèmes de réutilisation
     sleep(1);
@@ -249,4 +267,3 @@ int main() {
 
     return EXIT_SUCCESS;
 }
-
