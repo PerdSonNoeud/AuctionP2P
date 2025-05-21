@@ -164,15 +164,15 @@ int join_auction() {
 
 int handle_join(int sock) {
   struct sockaddr_in6 sender;
-  char buffer[1024]; // Buffer statique avec taille fixe
+  char buffer[1024]; // Static buffer with fixed size
   memset(buffer, 0, sizeof(buffer));
 
   int len = receive_multicast(sock, buffer, sizeof(buffer), &sender);
   if (len <= 0) {
-    return 0; // Aucune donnée ou erreur
+    return 0; // No data or error
   }
 
-  // Afficher les données brutes reçues pour le débogage
+  // Display received raw data for debugging
   printf("Données reçues (%d octets): ", len);
   for (int i = 0; i < 10 && i < len; i++) {
     printf("%02x ", (unsigned char)buffer[i]);
@@ -185,19 +185,19 @@ int handle_join(int sock) {
     return -1;
   }
 
-  // Initialiser les champs pour éviter les problèmes de mémoire
+  // Initialize fields to avoid memory issues
   msg->mess = NULL;
   msg->sig = NULL;
 
-  // Extraire les informations du demandeur
+  // Extract requester information
   if (buffer_to_message(msg, buffer) < 0) {
     perror("buffer_to_message a échoué");
     free(msg);
     return -1;
   }
 
-  // Vérifier le code du message
-  if (msg->code == CODE_DEMANDE_LIAISON) { // CODE = 3 pour demande de connexion
+  // Check message code
+  if (msg->code == CODE_DEMANDE_LIAISON) { // CODE = 3 for connection request
     printf("Demande de connexion reçue\n");
 
       // Display requester info
@@ -230,7 +230,7 @@ int handle_join(int sock) {
     message_set_port(response, pSystem.my_port);
     message_set_mess(response, "Bienvenue dans le système P2P");
 
-    // Convertir la réponse en buffer
+    // Convert the response to buffer
     char resp_buffer[1024];
     memset(resp_buffer, 0, sizeof(resp_buffer));
 
@@ -242,7 +242,7 @@ int handle_join(int sock) {
       return -1;
     }
 
-    // Envoyer la réponse
+    // Send the response
     printf("Envoi de la réponse au demandeur...\n");
     if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port,
                       resp_buffer, strlen(resp_buffer)) < 0) {
