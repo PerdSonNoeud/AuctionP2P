@@ -8,30 +8,30 @@
 #include "include/auction.h"
 #include "include/multicast.h"
 
-// Variables globales
+// Global variables
 int running = 1;
 int recv_sock = -1;
 int send_sock = -1;
-extern struct PairSystem pSystem;  // Déclarer pSystem comme externe
+extern struct PairSystem pSystem;  // Declare pSystem as external
 
-// Fonction pour créer un nouveau réseau P2P
+// Function to create a new P2P network
 void create_network() {
     printf("Création d'un nouveau réseau P2P...\n");
 
-    // Initialiser le système de pairs si ce n'est pas déjà fait
+    // Initialize the peer system if not already done
     if (init_pairs() < 0) {
         fprintf(stderr, "Échec de l'initialisation du système de pairs\n");
         return;
     }
 
-    // Configurer le socket de réception multicast
+    // Configure multicast receiver socket
     recv_sock = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
     if (recv_sock < 0) {
         fprintf(stderr, "Échec de la création du socket récepteur multicast\n");
         return;
     }
 
-    // Configurer le socket d'envoi pour répondre aux requêtes
+    // Configure sender socket to respond to requests
     send_sock = setup_multicast_sender();
     if (send_sock < 0) {
         fprintf(stderr, "Échec de la création du socket émetteur multicast\n");
@@ -39,7 +39,7 @@ void create_network() {
         return;
     }
 
-    // Afficher les infos du nœud actuel
+    // Display current node info
     char my_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &pSystem.my_ip, my_ip_str, sizeof(my_ip_str));
     printf("\nNœud P2P créé avec succès:\n");
@@ -49,14 +49,14 @@ void create_network() {
     printf("Adresse multicast: %s:%d\n", pSystem.liaison_addr, pSystem.liaison_port);
     printf("\nEn attente de connexions...\n");
 
-    // Configuration pour poll
+    // Configuration for poll
     struct pollfd fds[2];
     
-    // Surveillance du socket réseau
+    // Monitor network socket
     fds[0].fd = recv_sock;
     fds[0].events = POLLIN;
     
-    // Surveillance de l'entrée standard (pour détecter la commande de sortie)
+    // Monitor standard input (to detect exit command)
     fds[1].fd = STDIN_FILENO;
     fds[1].events = POLLIN;
     
@@ -64,20 +64,20 @@ void create_network() {
     
     running = 1;
     while (running) {
-        int poll_result = poll(fds, 2, 1000); // Timeout de 1 seconde
+        int poll_result = poll(fds, 2, 1000); // 1 second timeout
 
         if (poll_result < 0) {
             perror("Erreur lors de l'appel à poll");
             break;
         }
 
-        // Vérifier si des données sont disponibles sur le socket réseau
+        // Check if data is available on the network socket
         if (fds[0].revents & POLLIN) {
             int result = handle_join(recv_sock);
             if (result > 0) {
                 printf("Demande de connexion reçue et traitée\n");
                 
-                // Afficher les pairs connectés
+                // Display connected peers
                 printf("\nPairs actuellement connectés: %d\n", pSystem.count);
                 for (int i = 0; i < pSystem.count; i++) {
                     char ip_str[INET6_ADDRSTRLEN];
@@ -89,7 +89,7 @@ void create_network() {
             }
         }
 
-        // Vérifier si des données sont disponibles sur stdin
+        // Check if data is available on stdin
         if (fds[1].revents & POLLIN) {
             char input;
             if (read(STDIN_FILENO, &input, 1) > 0) {
@@ -100,31 +100,31 @@ void create_network() {
         }
     }
 
-    // Petit délai avant de fermer les sockets pour éviter les problèmes de réutilisation
+    // Small delay before closing sockets to avoid reuse issues
     sleep(1);
 
-    // Fermer les sockets
+    // Close sockets
     close(recv_sock);
     close(send_sock);
 
     printf("Réseau P2P fermé\n");
 }
 
-// Fonction pour rejoindre un réseau P2P existant
+// Function to join an existing P2P network
 void join_network() {
     printf("Tentative de connexion à un réseau P2P existant...\n");
 
-    // Initialiser le système de pairs si ce n'est pas déjà fait
+    // Initialize the peer system if not already done
     if (init_pairs() < 0) {
         fprintf(stderr, "Échec de l'initialisation du système de pairs\n");
         return;
     }
 
-    // Personnaliser l'ID (optionnel)
+    // Customize ID (optional)
     printf("Entrez votre ID souhaité (laissez vide pour défaut %d): ", pSystem.my_id);
     char id_str[10];
     if (fgets(id_str, sizeof(id_str), stdin) != NULL) {
-        // Enlever le \n final
+        // Remove trailing newline
         id_str[strcspn(id_str, "\n")] = 0;
         if (strlen(id_str) > 0) {
             pSystem.my_id = (unsigned short)atoi(id_str);
@@ -133,7 +133,7 @@ void join_network() {
 
     printf("Tentative de connexion avec ID=%d...\n", pSystem.my_id);
 
-    // Essayer de rejoindre le réseau
+    // Try to join the network
     if (join_auction() < 0) {
         fprintf(stderr, "Échec de la connexion au réseau P2P\n");
         return;
@@ -141,7 +141,7 @@ void join_network() {
 
     printf("\nConnexion au réseau P2P réussie!\n");
 
-    // Afficher les données du réseau
+    // Display network data
     printf("\nPairs actuellement connectés: %d\n", pSystem.count);
     for (int i = 0; i < pSystem.count; i++) {
         char ip_str[INET6_ADDRSTRLEN];
@@ -151,14 +151,14 @@ void join_network() {
                pSystem.pairs[i].active ? "Oui" : "Non");
     }
 
-    // Configurer le socket de réception pour recevoir les messages du réseau
+    // Set up receiver socket to receive network messages
     recv_sock = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
     if (recv_sock < 0) {
         fprintf(stderr, "Échec de la création du socket récepteur multicast\n");
         return;
     }
 
-    // Configurer le socket d'envoi pour participer au réseau
+    // Set up sender socket to participate in the network
     send_sock = setup_multicast_sender();
     if (send_sock < 0) {
         fprintf(stderr, "Échec de la création du socket émetteur multicast\n");
@@ -166,37 +166,37 @@ void join_network() {
         return;
     }
 
-    // Configuration pour poll
+    // Configuration for poll
     struct pollfd fds[2];
     
-    // Surveillance du socket réseau
+    // Monitor network socket
     fds[0].fd = recv_sock;
     fds[0].events = POLLIN;
     
-    // Surveillance de l'entrée standard (pour détecter la commande de sortie)
+    // Monitor standard input (to detect exit command)
     fds[1].fd = STDIN_FILENO;
     fds[1].events = POLLIN;
     
-    // Attendre l'entrée utilisateur pour quitter
+    // Wait for user input to exit
     printf("\nVous êtes maintenant connecté au réseau P2P\n");
     printf("Appuyez sur 'q' et Entrée pour quitter le programme\n");
 
     running = 1;
     while (running) {
-        int poll_result = poll(fds, 2, 1000); // Timeout de 1 seconde
+        int poll_result = poll(fds, 2, 1000); // 1 second timeout
         
         if (poll_result < 0) {
             perror("Erreur lors de l'appel à poll");
             break;
         }
         
-        // Vérifier si des données sont disponibles sur le socket réseau
+        // Check if data is available on the network socket
         if (fds[0].revents & POLLIN) {
             int result = handle_join(recv_sock);
             if (result > 0) {
                 printf("Demande de connexion reçue et traitée\n");
                 
-                // Afficher les pairs connectés
+                // Display connected peers
                 printf("\nPairs actuellement connectés: %d\n", pSystem.count);
                 for (int i = 0; i < pSystem.count; i++) {
                     char ip_str[INET6_ADDRSTRLEN];
@@ -208,7 +208,7 @@ void join_network() {
             }
         }
         
-        // Vérifier si des données sont disponibles sur stdin
+        // Check if data is available on stdin
         if (fds[1].revents & POLLIN) {
             char input;
             if (read(STDIN_FILENO, &input, 1) > 0) {
@@ -219,17 +219,17 @@ void join_network() {
         }
     }
 
-    // Petit délai avant de fermer les sockets pour éviter les problèmes de réutilisation
+    // Small delay before closing sockets to avoid reuse issues
     sleep(1);
 
-    // Fermer les sockets
+    // Close sockets
     close(recv_sock);
     close(send_sock);
 
     printf("Déconnexion du réseau P2P\n");
 }
 
-// Fonction principale
+// Main function
 int main() {
     int choice;
 
@@ -244,7 +244,7 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    // Consommer le retour à la ligne
+    // Consume the newline
     while (getchar() != '\n');
 
     switch (choice) {

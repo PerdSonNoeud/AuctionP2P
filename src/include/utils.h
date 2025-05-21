@@ -4,15 +4,28 @@
 #include "message.h"
 
 /**
+ * @brief Count the size of the buffer we need to allocate
+ *
+ * This function calculates the size of the buffer needed to store
+ * a serialized message.
+ *
+ * @param msg The message structure to serialize
+ * @return The size of the buffer needed, or -1 on error
+ */
+int get_buffer_size(struct message *msg);
+
+/**
  * @brief Convert a message structure to a serialized buffer
  *
  * This function takes a message structure and returns it as a serialized buffer
  * that can be transmitted over the network.
  *
- * @param iMess The message structure to serialize
- * @return A buffer containing the serialized data (must be freed by caller)
+ * @param msg The message structure to serialize
+ * @param buffer The buffer to fill with the serialized data
+ * @param buffer_size The size of the buffer
+ * @return 0 on success, -1 on error
  */
-char* message_to_buffer(struct message* iMess);
+int message_to_buffer(struct message *msg, char *buffer, int buffer_size);
 
 /**
  * @brief Convert a serialized buffer to a message structure
@@ -20,9 +33,10 @@ char* message_to_buffer(struct message* iMess);
  * This function takes a buffer received from the network and fills the 
  * message structure with the deserialized data.
  *
- * @param iBuffer The buffer to deserialize
- * @param oMess The message structure to populate
+ * @param msg The message structure to populate
+ * @param buffer The buffer to deserialize
+ * @return 0 on success, -1 on error
  */
-void message_to_struct(void* iBuffer, struct message* oMess);
+int buffer_to_message(struct message* msg, char *buffer);
 
 #endif /* UTILS_H */

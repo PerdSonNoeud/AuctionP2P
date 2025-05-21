@@ -21,11 +21,9 @@ int setup_multicast_receiver(const char *addr, int port);
  *
  * Creates and configures a socket to send multicast packets.
  *
- * @param addr Multicast group address
- * @param port Multicast port number
  * @return Socket file descriptor on success, negative value on error
  */
-int setup_multicast_sender(const char *addr, int port);
+int setup_multicast_sender();
 
 /**
  * @brief Send data to a multicast group
@@ -52,6 +50,6 @@ int send_multicast(int sock, const char *addr, int port, const void *data, size_
  * @param sender_addr Structure to store sender's address information
  * @return Number of bytes received on success, negative value on error
  */
-int receive_multicast(int sock, void *buffer, size_t buffer_size, struct sockaddr_in6 *sender_addr);
+int receive_multicast(int sock, char *buffer, size_t buffer_size, struct sockaddr_in6 *sender_addr);
 
 #endif /* MULTICAST_H */

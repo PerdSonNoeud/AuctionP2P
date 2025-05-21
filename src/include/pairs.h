@@ -17,7 +17,7 @@ struct Pair {
  * @brief Structure to manage the P2P system
  */
 struct PairSystem {
-  struct Pair *pairs;                // Array of peers
+  struct Pair *pairs;         // Array of peers
   int count;                  // Current number of peers
   int capacity;               // Maximum capacity of the peers array
   unsigned short my_id;       // Local peer identifier
