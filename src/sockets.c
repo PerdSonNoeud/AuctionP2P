@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <net/if.h>
-#include "include/multicast.h"
+#include "include/sockets.h"
 
 int setup_sock_opt(int sock) {
   // Allow address reuse

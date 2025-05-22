@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include <poll.h>
 #include "include/auction.h"
-#include "include/multicast.h"
+#include "include/sockets.h"
 
 // Global variables
 int running = 1;
