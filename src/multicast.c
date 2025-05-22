@@ -71,18 +71,11 @@ int setup_multicast_receiver(const char *addr, int port) {
     close(sock);
     return -1;
   }
-
-  // Use the loopback interface (lo) for local tests
-  // or a specific network interface for network tests
-  group.ipv6mr_interface = if_nametoindex("lo");
+  group.ipv6mr_interface = if_nametoindex("eth0");
   if (group.ipv6mr_interface == 0) {
-    // If loopback is not available, try eth0 interface
-    group.ipv6mr_interface = if_nametoindex("eth0");
-    if (group.ipv6mr_interface == 0) {
-      perror("Impossible de trouver une interface réseau valide");
-      close(sock);
-      return -1;
-    }
+    perror("Impossible de trouver une interface réseau valide");
+    close(sock);
+    return -1;
   }
 
   if (setsockopt(sock, IPPROTO_IPV6, IPV6_JOIN_GROUP, &group, sizeof(group)) < 0) {
