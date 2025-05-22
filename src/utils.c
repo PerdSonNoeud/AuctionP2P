@@ -100,6 +100,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     perror("Error: strdup failed");
     return -1;
   }
+  printf("Buffer: %s\n", buffer_copy);
 
   char *token;
   char *saveptr;
@@ -111,7 +112,6 @@ int buffer_to_message(struct message *msg, char *buffer) {
     free(buffer_copy);
     return -1;
   }
-  printf("%s\n", token);
   msg->code = atoi(token);
 
   if (msg->code != CODE_DEMANDE_LIAISON && msg->code != CODE_ID_ACCEPTED) {
@@ -211,6 +211,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
       if (msg->sig) free(msg->sig);
       return -1;
     }
+    printf("%s\n", token);
     msg->port = (uint16_t) atoi(token);
   }
   // TODO : NUMV, PRIX, NB

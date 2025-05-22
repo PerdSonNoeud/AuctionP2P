@@ -118,7 +118,16 @@ int join_auction() {
   while (attempts < MAX_ATTEMPTS) {
     // Attendre la réponse unicast sur notre socket dédié
     socklen_t sender_len = sizeof(sender);
-    memset(buffer, 0, buffer_size);
+    free(buffer);
+    buffer = malloc(1024); // Allocate buffer for incoming messages
+    if (buffer == NULL) {
+      perror("malloc a échoué");
+      free_message(request);
+      close(unicast_sock);
+      close(send_sock);
+      close(recv_sock);
+      return -1;
+    }
 
     int len = recvfrom(unicast_sock, buffer, buffer_size - 1, 0,
                       (struct sockaddr*)&sender, &sender_len);
