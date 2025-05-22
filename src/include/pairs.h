@@ -71,4 +71,11 @@ int handle_join(int sock);
  */
 int add_pair(unsigned short id, struct in6_addr ip, unsigned short port);
 
+/**
+ * @brief Free resources used by the peer system
+ *
+ * Cleans up and releases memory allocated for the peer system.
+ */
+void free_pairs();
+
 #endif /* PAIRS_H */

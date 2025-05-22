@@ -93,9 +93,9 @@ int setup_multicast_sender() {
   return sock;
 }
 
-int setup_unicast_socket(int port) {
-  // Socket pour recevoir les réponses unicast
-  int sock = socket(AF_INET6, SOCK_DGRAM, 0);
+int setup_server_socket(int port) {
+  // Socket pour recevoir les réponses unicast en TCP
+  int sock = socket(AF_INET6, SOCK_STREAM, 0);
   if (sock < 0) {
     perror("création du socket a échoué");
     return -1;
@@ -120,7 +120,34 @@ int setup_unicast_socket(int port) {
     return -1;
   }
 
-  printf("  Socket unicast configuré pour la réception sur port %d\n", port);
+  printf("  Socket unicast TCP configuré pour la réception sur port %d\n", port);
+  return sock;
+}
+
+int setup_client_socket(const char *addr, int port) {
+  int sock = socket(AF_INET6, SOCK_STREAM, 0);
+  if (sock < 0) {
+    perror("création du socket a échoué");
+    return -1;
+  }
+
+  struct sockaddr_in6 s_addr;
+  memset(&s_addr, 0, sizeof(s_addr));
+  s_addr.sin6_family = AF_INET6;
+  s_addr.sin6_port = htons(port);
+
+  if (inet_pton(AF_INET6, addr, &s_addr.sin6_addr) <= 0) {
+    perror("inet_pton a échoué");
+    close(sock);
+    return -1;
+  }
+
+  if (connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0) {
+    perror("connect a échoué");
+    close(sock);
+    return -1;
+  }
+
   return sock;
 }
 

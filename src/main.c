@@ -188,6 +188,7 @@ int main() {
   // Close sockets
   close(recv_sock);
   close(send_sock);
+  free_pairs();
 
   printf("Réseau P2P fermé\n");
   return EXIT_SUCCESS;

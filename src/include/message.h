@@ -11,9 +11,13 @@
 #define CODE_VALIDATION         1   // Validation of a message by a peer
 #define CODE_CONSENSUS          2   // Message validated by consensus (<=3 peers)
 #define CODE_CONSENSUS_SUITE    20  // Additional validations (>3 peers)
+
 #define CODE_DEMANDE_LIAISON    3   // Request to join the system
 #define CODE_REPONSE_LIAISON    4   // Response with personal address
 #define CODE_INFO_PAIR          5   // Send new peer information
+#define CODE_ID_ACCEPTED        50  // Added the new peer's ID
+#define CODE_ID_CHANGED         51  // Changed the new peer's ID
+
 #define CODE_INFO_PAIR_BROADCAST 6  // Broadcast new peer information
 #define CODE_INFO_SYSTEME       7   // System information (auction address + peers)
 #define CODE_NOUVELLE_VENTE     8   // Initiate a new auction

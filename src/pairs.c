@@ -57,7 +57,7 @@ int join_auction() {
     return -1;
   }
 
-  int unicast_sock = setup_unicast_socket(pSystem.my_port);
+  int unicast_sock = setup_server_socket(pSystem.my_port);
 
   // Send a request to join the system
   struct message *request = init_message(CODE_DEMANDE_LIAISON); // CODE = 3 for join request
@@ -155,11 +155,111 @@ int join_auction() {
         inet_ntop(AF_INET6, &response->ip, ip_str, sizeof(ip_str));
         printf("  Pair trouvé: ID=%d, IP=%s, Port=%d\n", response->id, ip_str, response->port);
 
-        // Add the peer
-        add_pair(response->id, response->ip, response->port);
+        close(unicast_sock);
+
+        // Get sender's address
+        char sender_ip_str[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
+        unicast_sock = setup_client_socket(sender_ip_str, pSystem.my_port);
+        if (unicast_sock < 0) {
+          perror("setup_client_socket a échoué");
+          free(response);
+          free(buffer);
+          free_message(request);
+          close(send_sock);
+          close(recv_sock);
+          return -1;
+        }
+        // Send a message to the sender with code 5
+        struct message *info_msg = init_message(CODE_INFO_PAIR); // CODE = 5 for Info Pair
+        info_msg->id = pSystem.my_id;
+        message_set_ip(info_msg, pSystem.my_ip);
+        message_set_port(info_msg, pSystem.my_port);
+        // TODO Add cle, public key for TLS
+
+        int info_buffer_size = get_buffer_size(info_msg);
+        char info_buffer[info_buffer_size];
+        memset(info_buffer, 0, sizeof(info_buffer));
+        if (message_to_buffer(info_msg, info_buffer, info_buffer_size) < 0) {
+          perror("message_to_buffer a échoué (info pair)");
+          free_message(info_msg);
+          free_message(response);
+          free_message(request);
+          close(send_sock);
+          return -1;
+        }
+
+        // Send the message
+        if (send(unicast_sock, info_buffer, info_buffer_size, 0) <= 0) {
+          perror("send a échoué (info pair)");
+          free_message(info_msg);
+          free_message(response);
+          free_message(request);
+          close(send_sock);
+          close(unicast_sock);
+          return -1;
+        }
+
+        // Wait for response from sender (CODE = 50 or CODE = 51)
+        memset(buffer, 0, buffer_size);
+        len = recv(unicast_sock, buffer, buffer_size - 1, 0);
+        if (len > 0) {
+          buffer[len] = '\0'; // Ensure null-terminated string
+          printf("  Réponse reçue de l'expéditeur (%d octets)\n", len);
+
+          struct message *response = malloc(sizeof(struct message));
+          if (response == NULL) {
+            perror("malloc a échoué");
+            free(buffer);
+            free_message(info_msg);
+            free_message(request);
+            close(unicast_sock);
+            close(send_sock);
+            return -1;
+          }
+          if (buffer_to_message(response, buffer) < 0) {
+            perror("buffer_to_message a échoué");
+            free(response);
+            free(buffer);
+            free_message(info_msg);
+            free_message(request);
+            close(unicast_sock);
+            close(send_sock);
+            return -1;
+          }
+
+          if (response->code == CODE_ID_ACCEPTED) {
+            printf("  ID accepté: %d\n", pSystem.my_id);
+          } else if (response->code == CODE_ID_CHANGED) {
+            printf("  ID changé: %d\n", response->id);
+            pSystem.my_id = response->id;
+          } else {
+            printf("  Code de réponse inattendu: %d\n", response->code);
+            free(response);
+            free(buffer);
+            free_message(info_msg);
+            free_message(request);
+            close(unicast_sock);
+            close(send_sock);
+            close(recv_sock);
+            return -1;
+          }
+          // Add the peer to the system
+        } else {
+          perror("recv a échoué");
+          free(response);
+          free(buffer);
+          free_message(info_msg);
+          free_message(request);
+          close(unicast_sock);
+          close(send_sock);
+          close(recv_sock);
+          return -1;
+        }
 
         free(response);
         free(buffer);
+        free_message(info_msg);
         free_message(request);
         close(unicast_sock);
         close(send_sock);
@@ -278,6 +378,122 @@ int handle_join(int sock) {
     }
     printf("Réponse envoyée avec succès (CODE = 4)\n");
 
+    // Conncect to the sender with TCP socket
+    int unicast_sock = setup_server_socket(pSystem.my_port);
+    if (unicast_sock < 0) {
+      perror("setup_server_socket a échoué");
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    // Accept the connection
+    if (listen(unicast_sock, 0) < 0) {
+      perror("listen a échoué");
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+
+    struct sockaddr_in6 client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+    int client_sock = accept(unicast_sock, (struct sockaddr *)&client_addr, &client_addr_len);
+    if (client_sock < 0) {
+      perror("accept a échoué");
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+
+    // Wait for code 5 (Info Pair)
+    char info_buffer[1024];
+    memset(info_buffer, 0, sizeof(info_buffer));
+    int info_len = recv(client_sock, info_buffer, sizeof(info_buffer) - 1, 0);
+    if (info_len <= 0) {
+      perror("recv a échoué");
+      close(client_sock);
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    info_buffer[info_len] = '\0'; // Ensure null termination
+    struct message *info_msg = malloc(sizeof(struct message));
+    if (info_msg == NULL) {
+      perror("malloc a échoué");
+      close(client_sock);
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    if (buffer_to_message(info_msg, info_buffer) < 0) {
+      perror("buffer_to_message a échoué");
+      free(info_msg);
+      close(client_sock);
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    // Check if ID is valid
+    int client_id = info_msg->id;
+    int found = 0;
+    while (!found) {
+      for (int i = 0; i < pSystem.count; i++) {
+        if (pSystem.pairs[i].id == client_id) {
+          found = 1;
+          break;
+        }
+      }
+      if (!found) {
+        // Generate a new ID not in use
+        client_id++;
+      }
+    }
+    // Add the new peer
+    if (add_pair(client_id, info_msg->ip, info_msg->port) < 0) {
+      perror("add_pair a échoué");
+      free(info_msg);
+      close(client_sock);
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    // Init the response (50 if the ID is not used, 51 otherwise)
+    if (info_msg->id == client_id) {
+      free_message(response);
+      response = init_message(CODE_ID_ACCEPTED);
+    } else {
+      response = init_message(CODE_ID_CHANGED);
+      // Give the new ID to the client
+      response->id = client_id;
+    }
+    memset(resp_buffer, 0, sizeof(resp_buffer));
+    if (message_to_buffer(response, resp_buffer, sizeof(resp_buffer)) < 0) {
+      perror("message_to_buffer a échoué");
+      free(info_msg);
+      close(client_sock);
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    // Send the response
+    if (send(client_sock, resp_buffer, strlen(resp_buffer), 0) < 0) {
+      perror("send a échoué");
+      free(info_msg);
+      close(client_sock);
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    printf("Réponse envoyée avec succès (CODE = %d)\n", response->code);
+
     free_message(response);
     free_message(request);
     close(send_sock);
@@ -327,4 +543,18 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
   pSystem.count++;
 
   return 0;
+}
+
+int quit_auction() {
+  return 0;
+}
+
+void free_pairs() {
+  extern struct PairSystem pSystem;
+  if (pSystem.pairs != NULL) {
+    free(pSystem.pairs);
+    pSystem.pairs = NULL;
+  }
+  pSystem.count = 0;
+  pSystem.capacity = 0;
 }
