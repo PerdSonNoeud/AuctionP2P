@@ -9,7 +9,7 @@
 #include <net/if.h>
 #include "include/multicast.h"
 
-int setup_multicast_opt(int sock) {
+int setup_sock_opt(int sock) {
   // Allow address reuse
   int optval = 1;
   if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
@@ -25,15 +25,6 @@ int setup_multicast_opt(int sock) {
     return -1;
   }
 
-  // Enable multicast loopback to allow applications
-  // on the same machine to receive their own multicast messages
-  unsigned int loop = 1;
-  if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &loop, sizeof(loop)) < 0) {
-    perror("setsockopt(IPV6_MULTICAST_LOOP) a échoué");
-    close(sock);
-    return -1;
-  }
-
   return 0;
 }
 
@@ -44,7 +35,7 @@ int setup_multicast_receiver(const char *addr, int port) {
     return -1;
   }
 
-  if (setup_multicast_opt(sock) < 0) {
+  if (setup_sock_opt(sock) < 0) {
     close(sock);
     return -1;
   }
@@ -96,12 +87,45 @@ int setup_multicast_sender() {
     return -1;
   }
 
-  if (setup_multicast_opt(sock) < 0) {
+  if (setup_sock_opt(sock) < 0) {
     close(sock);
     return -1;
   }
 
   return sock;
+}
+
+int setup_unicast_socket(int port) {
+  // Socket pour recevoir les réponses unicast
+  int unicast_sock = socket(AF_INET6, SOCK_DGRAM, 0);
+  if (unicast_sock < 0) {
+    perror("Échec de création du socket unicast");
+    close(send_sock);
+    close(recv_sock);
+    return -1;
+  }
+
+  // Configuration du socket unicast
+  struct sockaddr_in6 local_addr;
+  memset(&local_addr, 0, sizeof(local_addr));
+  local_addr.sin6_family = AF_INET6;
+  local_addr.sin6_addr = in6addr_any;
+  local_addr.sin6_port = htons(port); // Utiliser notre port pour la réception
+
+  // Options pour réutiliser l'adresse/port
+  if (setup_sock_opt(sock) < 0) {
+    close(unicast_sock);
+    return -1;
+  }
+
+  // Associer le socket à notre adresse/port
+  if (bind(unicast_sock, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+    perror("bind a échoué pour le socket unicast");
+    close(unicast_sock);
+    return -1;
+  }
+
+  printf("  Socket unicast configuré pour la réception sur port %d\n", port);
 }
 
 int send_multicast(int sock, const char *addr, int port, const void *data, size_t len) {

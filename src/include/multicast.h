@@ -26,6 +26,15 @@ int setup_multicast_receiver(const char *addr, int port);
 int setup_multicast_sender();
 
 /**
+ * @brief Set up a unicast socket
+ *
+ * Creates and configures a socket for unicast communication.
+ *
+ * @return Socket file descriptor on success, negative value on error
+ */
+int setup_unicast_socket(int port);
+
+/**
  * @brief Send data to a multicast group
  *
  * Send the specified data to the given multicast group and port.

@@ -45,17 +45,20 @@ int join_auction() {
   int send_sock = setup_multicast_sender();
   if (send_sock < 0) return -1;
 
-  // Socket to receive
+  // Socket to receive multicast
   int recv_sock = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
   if (recv_sock < 0) {
     close(send_sock);
     return -1;
   }
 
+  int unicast_sock = setup_unicast_socket(pSystem.my_port);
+
   // Send a request to join the system
   struct message *request = init_message(CODE_DEMANDE_LIAISON); // CODE = 3 for join request
   if (request == NULL) {
     perror("Échec de l'initialisation du message");
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -64,7 +67,8 @@ int join_auction() {
   char *buffer = malloc(buffer_size); // Allocate buffer for outgoing messages
   if (buffer == NULL) {
     perror("malloc a échoué");
-    free(request);
+    free_message(request);
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -72,7 +76,8 @@ int join_auction() {
   if (message_to_buffer(request, buffer, buffer_size) < 0) {
     perror("message_to_buffer a échoué");
     free(buffer);
-    free(request);
+    free_message(request);
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -80,18 +85,22 @@ int join_auction() {
 
   int result = send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, buffer, buffer_size);
   if (result < 0) {
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
   }
-  printf("  Demande de connexion envoyée\n");
+  printf("  Demande de connexion envoyée... (CODE = 3)\n");
 
-  // Set timeout
+  // Set timeout for unicast socket
   struct timeval tv;
   tv.tv_sec = TIMEOUT;
   tv.tv_usec = 0;
-  if (setsockopt(recv_sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv) < 0) {
+  if (setsockopt(unicast_sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv) < 0) {
     perror("setsockopt a échoué");
+    free(buffer);
+    free_message(request);
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -102,18 +111,33 @@ int join_auction() {
   int attempts = 0;
 
   while (attempts < MAX_ATTEMPTS) {
-    int len = receive_multicast(recv_sock, buffer, sizeof(buffer), &sender);
+    // Attendre la réponse unicast sur notre socket dédié
+    socklen_t sender_len = sizeof(sender);
+    memset(buffer, 0, buffer_size);
+
+    int len = recvfrom(unicast_sock, buffer, buffer_size - 1, 0,
+                      (struct sockaddr*)&sender, &sender_len);
+
     if (len > 0) {
+      buffer[len] = '\0'; // S'assurer que la chaîne est terminée
+      printf("  Réponse reçue en unicast (%d octets)\n", len);
+
       struct message *response = malloc(sizeof(struct message));
       if (response == NULL) {
         perror("malloc a échoué");
+        free(buffer);
+        free_message(request);
+        close(unicast_sock);
         close(send_sock);
         close(recv_sock);
         return -1;
       }
       if (buffer_to_message(response, buffer) < 0) {
-        perror("message_to_buffer a échoué");
+        perror("buffer_to_message a échoué");
         free(response);
+        free(buffer);
+        free_message(request);
+        close(unicast_sock);
         close(send_sock);
         close(recv_sock);
         return -1;
@@ -129,38 +153,10 @@ int join_auction() {
         // Add the peer
         add_pair(response->id, response->ip, response->port);
 
-        // Attendre le message 5 (CODE_INFO_PAIR)
-        int info_attempts = 0;
-        int info_received = 0;
-        while (info_attempts < MAX_ATTEMPTS && !info_received) {
-          int info_len = receive_multicast(recv_sock, buffer, sizeof(buffer), &sender);
-          if (info_len > 0) {
-            struct message *info_msg = malloc(sizeof(struct message));
-            if (info_msg == NULL) {
-              perror("malloc a échoué");
-              break;
-            }
-            if (buffer_to_message(info_msg, buffer) < 0) {
-              perror("buffer_to_message a échoué");
-              free(info_msg);
-              break;
-            }
-            if (info_msg->code == CODE_INFO_PAIR) {
-              printf("  Message CODE_INFO_PAIR reçu\n");
-              char ip_str[INET6_ADDRSTRLEN];
-              inet_ntop(AF_INET6, &info_msg->ip, ip_str, sizeof(ip_str));
-              printf("  Pair info: ID=%d, IP=%s, Port=%d\n", info_msg->id, ip_str, info_msg->port);
-              add_pair(info_msg->id, info_msg->ip, info_msg->port);
-              info_received = 1;
-              free(info_msg);
-              break;
-            }
-            free(info_msg);
-          } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            printf("  Timeout en attente du message 5 (tentative %d/%d)\n", info_attempts + 1, MAX_ATTEMPTS);
-          }
-          info_attempts++;
-        }
+        free(response);
+        free(buffer);
+        free_message(request);
+        close(unicast_sock);
         close(send_sock);
         close(recv_sock);
         return info_received ? 0 : -1;
@@ -174,12 +170,12 @@ int join_auction() {
     } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
       printf("  Timeout atteint, tentative %d/%d\n", attempts + 1, MAX_ATTEMPTS);
     } else {
-      perror("receive_multicast a échoué");
+      perror("recvfrom a échoué");
     }
 
     if (attempts < MAX_ATTEMPTS) {
       // Resend the request for each new attempt
-      if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, request, sizeof(request)) < 0) {
+      if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, buffer, strlen(buffer)) < 0) {
         printf("  Échec du renvoi de la demande\n");
       } else {
         printf("  Demande de connexion renvoyée (tentative %d/%d)\n", attempts + 1, MAX_ATTEMPTS);
@@ -192,6 +188,9 @@ int join_auction() {
     }
   }
 
+  free(buffer);
+  free_message(request);
+  close(unicast_sock);
   close(send_sock);
   close(recv_sock);
   return -1; // Connection failed
@@ -264,7 +263,6 @@ int handle_join(int sock) {
     }
 
     // Send the response (CODE 4) en unicast vers sender
-    printf("Envoi de la réponse au demandeur en unicast...\n");
     if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
       perror("send_unicast a échoué");
       free_message(response);
@@ -272,7 +270,7 @@ int handle_join(int sock) {
       close(send_sock);
       return -1;
     }
-    printf("Réponse envoyée avec succès\n");
+    printf("Réponse envoyée avec succès (CODE = 4)\n");
 
     free_message(response);
     free_message(request);
