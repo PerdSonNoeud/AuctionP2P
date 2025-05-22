@@ -24,7 +24,7 @@ void sync_auctions();
 // Fonction pour traiter les messages d'enchère reçus
 int handle_auction_message(int sock) {
     struct sockaddr_in6 sender;
-    char buffer[1024]; // Buffer statique avec taille fixe
+    char buffer[2048]; // Buffer statique avec taille augmentée (2048 au lieu de 1024)
     memset(buffer, 0, sizeof(buffer));
 
     int len = receive_multicast(sock, buffer, sizeof(buffer), &sender);
