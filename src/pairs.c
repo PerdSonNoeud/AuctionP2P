@@ -274,43 +274,6 @@ int handle_join(int sock) {
     }
     printf("Réponse envoyée avec succès\n");
 
-    // Envoi du message CODE_INFO_PAIR (code 5) TODO c'est censé être dans join_auction()
-    struct message *info_msg = init_message(CODE_INFO_PAIR);
-    if (info_msg == NULL) {
-      perror("init_message a échoué");
-      free_message(response);
-      free_message(request);
-      close(send_sock);
-      return -1;
-    }
-    info_msg->id = pSystem.my_id;
-    message_set_ip(info_msg, pSystem.my_ip);
-    message_set_port(info_msg, pSystem.my_port);
-    message_set_mess(info_msg, "Info pair après liaison");
-
-    char info_buffer[1024];
-    memset(info_buffer, 0, sizeof(info_buffer));
-    if (message_to_buffer(info_msg, info_buffer, sizeof(info_buffer)) < 0) {
-      perror("message_to_buffer a échoué (info pair)");
-      free_message(info_msg);
-      free_message(response);
-      free_message(request);
-      close(send_sock);
-      return -1;
-    }
-    printf("Envoi du message CODE_INFO_PAIR...\n");
-    if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port,
-                      info_buffer, strlen(info_buffer)) < 0) {
-      perror("send_multicast a échoué (info pair)");
-      free_message(info_msg);
-      free_message(response);
-      free_message(request);
-      close(send_sock);
-      return -1;
-    }
-    printf("Message CODE_INFO_PAIR envoyé\n");
-
-    free_message(info_msg);
     free_message(response);
     free_message(request);
     close(send_sock);
