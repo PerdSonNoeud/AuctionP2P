@@ -111,11 +111,12 @@ int buffer_to_message(struct message *msg, char *buffer) {
     free(buffer_copy);
     return -1;
   }
+  printf("%s\n", token);
   msg->code = atoi(token);
 
   if (msg->code != CODE_DEMANDE_LIAISON && msg->code != CODE_ID_ACCEPTED) {
     // Extract ID
-    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
       perror("Error: invalid buffer format (missing ID)");
       free(buffer_copy);
@@ -126,7 +127,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
 
   if (msg->code == CODE_VALIDATION || msg->code == CODE_CONSENSUS) {
     // Extract LMESS
-    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
       perror("Error: invalid buffer format (missing LMESS)");
       free(buffer_copy);
@@ -135,7 +136,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     msg->lmess = (uint8_t) atoi(token);
 
     // Extract MESS
-    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
       perror("Error: invalid buffer format (missing MESS)");
       free(buffer_copy);
@@ -153,7 +154,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     }
 
     // Extract LSIG
-    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
       perror("Error: invalid buffer format (missing LSIG)");
       free(buffer_copy);
@@ -164,7 +165,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
 
     // Extract SIG (if present)
     if (msg->lsig > 0) {
-      token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+      token = strtok_r(NULL, SEPARATOR, &saveptr);
       if (token == NULL) {
         perror("Error: invalid buffer format (missing SIG)");
         free(buffer_copy);
@@ -185,7 +186,8 @@ int buffer_to_message(struct message *msg, char *buffer) {
 
   if (msg->code == CODE_REPONSE_LIAISON || msg->code == CODE_INFO_PAIR ||
       msg->code == CODE_INFO_PAIR_BROADCAST || msg->code == CODE_INFO_SYSTEME) {
-    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    // Extract IP
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
       perror("Error: invalid buffer format (missing SIG)");
       free(buffer_copy);
@@ -193,7 +195,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
       if (msg->sig) free(msg->sig);
       return -1;
     }
-    if (inet_pton(AF_INET6, token, &msg->ip) <= 0) {
+    if (inet_pton(AF_INET6, token, &msg->ip) < 0) {
       perror("Error: invalid IP address");
       free(buffer_copy);
       if (msg->mess) free(msg->mess);
@@ -201,7 +203,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
       return -1;
     }
     // Extract PORT
-    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
       perror("Error: invalid buffer format (missing PORT)");
       free(buffer_copy);
