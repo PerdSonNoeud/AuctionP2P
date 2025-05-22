@@ -156,19 +156,15 @@ int join_auction() {
         close(recv_sock);
         return -1;
       }
+      close(unicast_sock);
 
       if (response->code == CODE_REPONSE_LIAISON) { // CODE = 4 (response)
         printf("  Réponse de connexion reçue\n");
-        // Display found peer information
-        char ip_str[INET6_ADDRSTRLEN];
-        inet_ntop(AF_INET6, &response->ip, ip_str, sizeof(ip_str));
-        printf("  Pair trouvé: ID=%d, IP=%s, Port=%d\n", response->id, ip_str, response->port);
-
-        close(unicast_sock);
-
         // Get sender's address
         char sender_ip_str[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
+        printf("  Pair trouvé: ID=%d, IP=%s, Port=%d\n", response->id, sender_ip_str, response->port);
+
         unicast_sock = setup_client_socket(sender_ip_str, response->port);
         if (unicast_sock < 0) {
           perror("setup_client_socket a échoué");
@@ -376,17 +372,6 @@ int handle_join(int sock) {
       return -1;
     }
 
-    // Send the response (CODE 4) en unicast vers sender
-    sender.sin6_port = htons(pSystem.my_port); // Set sender port
-    if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
-      perror("send_unicast a échoué");
-      free_message(response);
-      free_message(request);
-      close(send_sock);
-      return -1;
-    }
-    printf("Réponse envoyée avec succès (CODE = 4)\n");
-
     // Conncect to the sender with TCP socket
     int unicast_sock = setup_server_socket(pSystem.my_port);
     if (unicast_sock < 0) {
@@ -404,6 +389,16 @@ int handle_join(int sock) {
       close(send_sock);
       return -1;
     }
+
+    // Send the response (CODE 4) en unicast vers sender
+    if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
+      perror("send_unicast a échoué");
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    printf("Réponse envoyée avec succès (CODE = 4)\n");
 
     struct sockaddr_in6 client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
