@@ -31,6 +31,11 @@ int init_pairs() {
   inet_pton(AF_INET6, "::1", &pSystem.my_ip);
   pSystem.my_port = 8000;
 
+  printf("  Adresse IP locale: ");
+  char my_ip_str[INET6_ADDRSTRLEN];
+  inet_ntop(AF_INET6, &pSystem.my_ip, my_ip_str, sizeof(my_ip_str));
+  printf("%s:%d\n", my_ip_str, pSystem.my_port);
+
   // Default multicast addresses
   strcpy(pSystem.liaison_addr, "ff12::");
   pSystem.liaison_port = 8080;
@@ -263,6 +268,7 @@ int handle_join(int sock) {
     }
 
     // Send the response (CODE 4) en unicast vers sender
+    sender.sin6_port = htons(pSystem.my_port); // Set sender port
     if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
       perror("send_unicast a échoué");
       free_message(response);

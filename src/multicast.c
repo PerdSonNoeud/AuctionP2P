@@ -14,14 +14,12 @@ int setup_sock_opt(int sock) {
   int optval = 1;
   if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
     perror("setsockopt(SO_REUSEADDR) a échoué");
-    close(sock);
     return -1;
   }
 
   // Allow port reuse
   if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
     perror("setsockopt(SO_REUSEPORT) a échoué");
-    close(sock);
     return -1;
   }
 
@@ -97,34 +95,33 @@ int setup_multicast_sender() {
 
 int setup_unicast_socket(int port) {
   // Socket pour recevoir les réponses unicast
-  int unicast_sock = socket(AF_INET6, SOCK_DGRAM, 0);
-  if (unicast_sock < 0) {
-    perror("Échec de création du socket unicast");
+  int sock = socket(AF_INET6, SOCK_DGRAM, 0);
+  if (sock < 0) {
+    perror("création du socket a échoué");
     return -1;
   }
 
-  // Configuration du socket unicast
-  struct sockaddr_in6 local_addr;
-  memset(&local_addr, 0, sizeof(local_addr));
-  local_addr.sin6_family = AF_INET6;
-  local_addr.sin6_addr = in6addr_any;
-  local_addr.sin6_port = htons(port); // Utiliser notre port pour la réception
+  struct sockaddr_in6 addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin6_family = AF_INET6;
+  addr.sin6_addr = in6addr_any;
+  addr.sin6_port = htons(port);
 
   // Options pour réutiliser l'adresse/port
-  if (setup_sock_opt(unicast_sock) < 0) {
-    close(unicast_sock);
+  if (setup_sock_opt(sock) < 0) {
+    close(sock);
     return -1;
   }
 
   // Associer le socket à notre adresse/port
-  if (bind(unicast_sock, (struct sockaddr*)&local_addr, sizeof(local_addr)) < 0) {
+  if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
     perror("bind a échoué pour le socket unicast");
-    close(unicast_sock);
+    close(sock);
     return -1;
   }
 
   printf("  Socket unicast configuré pour la réception sur port %d\n", port);
-  return unicast_sock;
+  return sock;
 }
 
 int send_multicast(int sock, const char *addr, int port, const void *data, size_t len) {
