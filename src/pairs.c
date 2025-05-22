@@ -129,7 +129,7 @@ int join_auction() {
       return -1;
     }
 
-    int len = recvfrom(unicast_sock, buffer, buffer_size - 1, 0,
+    int len = recvfrom(unicast_sock, buffer, strlen(buffer) - 1, 0,
                       (struct sockaddr*)&sender, &sender_len);
 
     if (len > 0) {
@@ -169,7 +169,7 @@ int join_auction() {
         // Get sender's address
         char sender_ip_str[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
-        unicast_sock = setup_client_socket(sender_ip_str, pSystem.my_port);
+        unicast_sock = setup_client_socket(sender_ip_str, response->port);
         if (unicast_sock < 0) {
           perror("setup_client_socket a échoué");
           free(response);

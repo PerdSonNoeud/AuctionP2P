@@ -65,10 +65,6 @@ int message_to_buffer(struct message *msg, char *buffer, int buffer_size) {
 
   if (msg->code == CODE_REPONSE_LIAISON || msg->code == CODE_INFO_PAIR ||
       msg->code == CODE_INFO_PAIR_BROADCAST || msg->code == CODE_INFO_SYSTEME) {
-    // Offset for IP
-    char ip_str[INET6_ADDRSTRLEN];
-    inet_ntop(AF_INET6, &msg->ip, ip_str, sizeof(ip_str));
-    offset += snprintf(buffer + offset, buffer_size - offset, "|%s", ip_str);
     // Offset for PORT
     offset += snprintf(buffer + offset, buffer_size - offset, "|%d", msg->port);
   }
@@ -100,7 +96,6 @@ int buffer_to_message(struct message *msg, char *buffer) {
     perror("Error: strdup failed");
     return -1;
   }
-  printf("Buffer: %s\n", buffer_copy);
 
   char *token;
   char *saveptr;
@@ -186,22 +181,6 @@ int buffer_to_message(struct message *msg, char *buffer) {
 
   if (msg->code == CODE_REPONSE_LIAISON || msg->code == CODE_INFO_PAIR ||
       msg->code == CODE_INFO_PAIR_BROADCAST || msg->code == CODE_INFO_SYSTEME) {
-    // Extract IP
-    token = strtok_r(NULL, SEPARATOR, &saveptr);
-    if (token == NULL) {
-      perror("Error: invalid buffer format (missing SIG)");
-      free(buffer_copy);
-      if (msg->mess) free(msg->mess);
-      if (msg->sig) free(msg->sig);
-      return -1;
-    }
-    if (inet_pton(AF_INET6, token, &msg->ip) < 0) {
-      perror("Error: invalid IP address");
-      free(buffer_copy);
-      if (msg->mess) free(msg->mess);
-      if (msg->sig) free(msg->sig);
-      return -1;
-    }
     // Extract PORT
     token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
@@ -211,7 +190,6 @@ int buffer_to_message(struct message *msg, char *buffer) {
       if (msg->sig) free(msg->sig);
       return -1;
     }
-    printf("%s\n", token);
     msg->port = (uint16_t) atoi(token);
   }
   // TODO : NUMV, PRIX, NB
