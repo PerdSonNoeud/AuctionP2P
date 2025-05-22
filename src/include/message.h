@@ -54,7 +54,7 @@ struct message {
  *
  * @param msg Pointer to the message to display
  */
-void afficher_message(struct message* msg);
+void print_message(struct message* msg);
 
 /**
  * @brief Create a new message structure with the given code

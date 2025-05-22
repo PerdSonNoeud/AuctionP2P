@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-void afficher_message(struct message* msg) {
+void print_message(struct message* msg) {
     if (msg == NULL) {
         printf("Le Message est NULL\n");
         return;

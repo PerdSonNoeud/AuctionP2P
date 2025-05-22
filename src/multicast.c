@@ -91,8 +91,7 @@ int setup_multicast_receiver(const char *addr, int port) {
     return -1;
   }
 
-  printf("Multicast receiver configured on port %d, interface index: %u\n",
-         port, group.ipv6mr_interface);
+  printf("  Multicast receveur PORT: %d, interface index: %u\n", port, group.ipv6mr_interface);
 
   return sock;
 }
@@ -123,6 +122,15 @@ int send_multicast(int sock, const char *addr, int port, const void *data, size_
     return -1;
   }
   if (sendto(sock, data, len, 0, (struct sockaddr*)&dest, sizeof(dest)) < 0) {
+    perror("sendto a échoué");
+    return -1;
+  }
+
+  return 0;
+}
+
+int send_unicast(int sock, struct sockaddr_in6 *dest_addr, const void *data, size_t len) {
+  if (sendto(sock, data, len, 0, (struct sockaddr*)dest_addr, sizeof(*dest_addr)) < 0) {
     perror("sendto a échoué");
     return -1;
   }
