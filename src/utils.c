@@ -1,181 +1,165 @@
-#include "utils.h"
+#include "include/utils.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 int nbDigits (int n) {
-    if (n < 10) return 1;
-    if (n < 100) return 2;
-    if (n < 1000) return 3;
-    if (n < 10000) return 4;
-    if (n < 100000) return 5;
-    return 0;
+  if (n < 10) return 1;
+  if (n < 100) return 2;
+  if (n < 1000) return 3;
+  if (n < 10000) return 4;
+  if (n < 100000) return 5;
+  return 0;
 }
 
-char* struct_to_buffer(struct message* iMess) {
-    if (iMess == NULL) {
-        perror("Error: iMess is NULL");
-        return NULL;
-    }
+int get_buffer_size(struct message *msg) {
+  if (msg == NULL) {
+    perror("Error: msg is NULL");
+    return -1;
+  }
 
-    // Calculate the size of the resulting buffer
-    size_t buffer_size = 0;
-    buffer_size += nbDigits(iMess->code); // For CODE (max 3 digits)
-    buffer_size += nbDigits(iMess->id) + sizeof(char); // For ID (max 10 digits) + separator
-    buffer_size += nbDigits(iMess->lmess) + sizeof(char); // For LMESS (max 5 digits) + separator
-    buffer_size += iMess->lmess + sizeof(char); // For MESS + separator
-    buffer_size += nbDigits(iMess->lsig) + sizeof(char); // For LSIG (max 5 digits) + separator
+  int size = 0;
+  // Calculate the size of the resulting buffer
+  size += nbDigits(msg->code); // For CODE (max 3 digits)
+  size += nbDigits(msg->id) + sizeof(char); // For ID (max 10 digits) + separator
+  size += nbDigits(msg->lmess) + sizeof(char); // For LMESS (max 5 digits) + separator
+  size += msg->lmess + sizeof(char); // For MESS + separator
+  size += nbDigits(msg->lsig) + sizeof(char); // For LSIG (max 5 digits) + separator
 
-    if (iMess->lsig > 0) {
-        buffer_size += iMess->lsig + sizeof(char); // For SIG + separator
-    }
-    //buffer_size += sizeof(uint8_t) + sizeof(char); // For NB (max 5 digits) + separator
+  if (msg->lsig > 0) {
+    size += msg->lsig + sizeof(char); // For SIG + separator
+  }
+  // size += sizeof(uint8_t) + sizeof(char); // For NB (max 5 digits) + separator
 
-    // Allocate memory for the buffer
-    buffer_size += 1; // +1 for ending null character
-    char* buffer = malloc(buffer_size);
-    if (buffer == NULL) {
-        perror("malloc failed");
-        return NULL;
-    }
-
-    // Fill the buffer with the serialized data
-    int offset = 0;
-    offset += snprintf(buffer + offset, buffer_size - offset, "%d", iMess->code);
-    offset += snprintf(buffer + offset, buffer_size - offset, "|%u", iMess->id);
-    offset += snprintf(buffer + offset, buffer_size - offset, "|%d", iMess->lmess);
-    printf("sizeof mess: %zu\n", buffer_size);
-    offset += snprintf(buffer + offset, buffer_size - offset, "|%s", iMess->mess);
-    offset += snprintf(buffer + offset, buffer_size - offset, "|%d", iMess->lsig);
-
-    if (iMess->lsig > 0) {
-        offset += snprintf(buffer + offset, buffer_size - offset, "|%s", iMess->sig);
-    }
-    //offset += snprintf(buffer + offset, buffer_size - offset, "%u", iMess->nb);
-
-    return buffer;
+  // Allocate memory for the buffer
+  size += 1; // +1 for ending null character
+  return size;
 }
 
+int message_to_buffer(struct message *msg, char *buffer, int buffer_size) {
+  if (msg == NULL) {
+    perror("Error: msg is NULL");
+    return -1;
+  }
 
-void* define_struct() {
-    struct message* iMess = malloc(sizeof(struct message));
-    if(iMess == NULL) {
-        perror("Allocation ratée");
-        return NULL;
-    }
-    switch (iMess->code) {
-        /*+++++++++++++++++++++++++++++++++++++++++++++
-        | CODE = 1 | ID | LMESS | MESS | LSIG | SIG |
-        +++++++++++++++++++++++++++++++++++++++++++++*/
-        case 1:
-            if(iMess->mess == NULL) {
-                perror("Error: message is NULL");
-                return NULL;
-            }
-            iMess->code = 1;
-            iMess->id = malloc(sizeof(uint16_t));
-            iMess->lmess = malloc(sizeof(uint8_t));
-            iMess->mess = malloc(sizeof(char) * iMess->lmess);
-            if(iMess->lsig != 0) {
-                iMess->lsig = malloc(sizeof(uint8_t));
-                iMess->sig = malloc(sizeof(char) * iMess->lsig);
-            }
-            break;
+  // Fill the buffer with the serialized data
+  int offset = 0;
+  offset += snprintf(buffer + offset, buffer_size - offset, "%d", msg->code);
+  offset += snprintf(buffer + offset, buffer_size - offset, "|%u", msg->id);
+  offset += snprintf(buffer + offset, buffer_size - offset, "|%d", msg->lmess);
+  offset += snprintf(buffer + offset, buffer_size - offset, "|%s", msg->mess);
+  offset += snprintf(buffer + offset, buffer_size - offset, "|%d", msg->lsig);
 
-        case 2:
-            /*++++++++++++++++++++++++++++++++++++++++++++++++++
-            | CODE = 2 | ID | LMESS | MESS | LSIG | SIG | NB |
-            ++++++++++++++++++++++++++++++++++++++++++++++++++*/
-            if(iMess->mess == NULL) {
-                perror("Error: message is NULL");
-                return NULL;
-            }
-            iMess->code = 2;
-            iMess->id = malloc(sizeof(uint16_t));
-            iMess->lmess = malloc(sizeof(uint8_t));
-            iMess->mess = malloc(sizeof(char) * iMess->lmess);
-            if(iMess->lsig != 0) {
-                iMess->lsig = malloc(sizeof(uint8_t));
-                iMess->sig = malloc(sizeof(char) * iMess->lsig);
-            }
-            /*+++++++++++++++++++
-            | ID | LSIG | SIG |
-            +++++++++++++++++++*/
-            if(iMess->nb <= 3) {
-                for(int i = 0; i < iMess->nb; i++) {
-                    iMess->id = malloc(sizeof(uint16_t));
-                    iMess->lsig = malloc(sizeof(uint8_t));
-                    iMess->sig = malloc(sizeof(char) * iMess->lsig);
-                }
-            }
-            /*+++++++++++++++++++++++
-            | CODE = 20 | ID | NB |
-            +++++++++++++++++++++++*/
-            else {
-                iMess->code = 20;
-                iMess->id = malloc(sizeof(uint16_t));
-                iMess->nb = malloc(sizeof(uint16_t));
-            }
-            int offset2 = 0;
-            break;
-        default:
-            break;
-    }
-    return iMess;
+  if (msg->lsig > 0) {
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%s", msg->sig);
+  }
+  return 0;
 }
 
-void buffer_to_struct(void* iBuffer, struct message* oMess) {
-    if(iBuffer == NULL) {
-        perror("Error: iBuffer or oMess is NULL");
-        return;
+int buffer_to_message(struct message *msg, char *buffer) {
+  if(buffer == NULL) {
+    perror("Error: buffer is NULL");
+    return -1;
+  }
+  if (msg == NULL) {
+    msg = malloc(sizeof(struct message));
+    if (msg == NULL) {
+      perror("Error: malloc failed");
+      return -1;
     }
-    if (oMess == NULL) {
-        oMess = malloc(sizeof(struct message));
-    }
+  }
 
-    
-    char * token = strtok ( iBuffer, SEPARATOR );
-    //code
-    oMess->code = (uint8_t)atoi(token);
-    token = strtok ( NULL, SEPARATOR );
-    //id
-    oMess->id = (uint16_t)atoi(token);
-    token = strtok ( NULL, SEPARATOR );
-    //lmess
-    oMess->lmess = (uint8_t)atoi(token);
-    token = strtok ( NULL, SEPARATOR );
-    //mess
-    oMess->mess = malloc(oMess->lmess);
-    memcpy(oMess->mess, token, oMess->lmess);
-    token = strtok ( NULL, SEPARATOR );
-    //lsig
-    oMess->lsig = (uint8_t)atoi(token);
-    token = strtok ( NULL, SEPARATOR );
-    //sig
-    if(oMess->lsig != 0) {
-        oMess->sig = malloc(oMess->lsig);
-        memcpy(oMess->sig, token, oMess->lsig);
-    }
-    else {
-        oMess->sig = NULL;
-    }
-    token = strtok ( NULL, SEPARATOR );
-}
+  // Initialize pointers to NULL to avoid memory issues
+  msg->mess = NULL;
+  msg->sig = NULL;
 
-int main(int argc, char const *argv[])
-{
-    struct message* mess = malloc(sizeof(struct message));
-    mess->code = 1;
-    mess->id = 1234;
-    mess->lmess = sizeof(char) * 13;
-    mess->mess = "Hello world !";
-    mess->lsig = 5;
-    mess->sig = "32223";
-    char* buff = struct_to_buffer(mess); 
-    printf("Buffer: %s\n", buff);
-    struct message* mess2 = malloc(sizeof(struct message));
-    buffer_to_struct(buff, mess2);
-    afficher_message(mess2);
-    return 0;
+  // Copy the buffer to avoid modifying the original
+  char *buffer_copy = strdup(buffer);
+  if (buffer_copy == NULL) {
+    perror("Error: strdup failed");
+    return -1;
+  }
+
+  char *token;
+  char *saveptr;
+
+  // Extract CODE
+  token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+  if (token == NULL) {
+    perror("Error: invalid buffer format (missing CODE)");
+    free(buffer_copy);
+    return -1;
+  }
+  msg->code = atoi(token);
+
+  // Extract ID
+  token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+  if (token == NULL) {
+    perror("Error: invalid buffer format (missing ID)");
+    free(buffer_copy);
+    return -1;
+  }
+  msg->id = (uint16_t)atoi(token);
+
+  // Extract LMESS
+  token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+  if (token == NULL) {
+    perror("Error: invalid buffer format (missing LMESS)");
+    free(buffer_copy);
+    return -1;
+  }
+  msg->lmess = (uint8_t)atoi(token);
+
+  // Extract MESS
+  token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+  if (token == NULL) {
+    perror("Error: invalid buffer format (missing MESS)");
+    free(buffer_copy);
+    return -1;
+  }
+  if (msg->lmess > 0) {
+    msg->mess = malloc(msg->lmess + 1);
+    if (msg->mess == NULL) {
+      perror("Error: malloc failed for mess");
+      free(buffer_copy);
+      return -1;
+    }
+    strncpy(msg->mess, token, msg->lmess);
+    msg->mess[msg->lmess] = '\0';
+  }
+
+  // Extract LSIG
+  token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+  if (token == NULL) {
+    perror("Error: invalid buffer format (missing LSIG)");
+    free(buffer_copy);
+    if (msg->mess) free(msg->mess);
+    return -1;
+  }
+  msg->lsig = (uint8_t)atoi(token);
+
+  // Extract SIG (if present)
+  if (msg->lsig > 0) {
+    token = strtok_r(buffer_copy, SEPARATOR, &saveptr);
+    if (token == NULL) {
+      perror("Error: invalid buffer format (missing SIG)");
+      free(buffer_copy);
+      if (msg->mess) free(msg->mess);
+      return -1;
+    }
+    msg->sig = malloc(msg->lsig + 1);
+    if (msg->sig == NULL) {
+      perror("Error: malloc failed for sig");
+      free(buffer_copy);
+      if (msg->mess) free(msg->mess);
+      return -1;
+    }
+    strncpy(msg->sig, token, msg->lsig);
+    msg->sig[msg->lsig] = '\0';
+  }
+
+  // Release memory
+  free(buffer_copy);
+  return 0;
 }
