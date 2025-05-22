@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <time.h>
 #include "pairs.h"
+#include "message.h"
 
 /**
  * @brief Structure to store auction information
@@ -85,5 +86,84 @@ int is_auction_finished(unsigned int auction_id);
  * @return 1 if the bid is valid and accepted, 0 if rejected, negative value on error
  */
 int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int bid_price);
+
+/**
+ * @brief Generate a unique auction ID
+ *
+ * Creates a unique auction identifier based on the local peer ID and a counter.
+ *
+ * @return A unique auction identifier
+ */
+unsigned int generate_auction_id();
+
+/**
+ * @brief Find an auction by its ID
+ *
+ * Searches for an auction with the specified ID in the auction system.
+ *
+ * @param auction_id The auction identifier to search for
+ * @return Pointer to the auction if found, NULL otherwise
+ */
+struct Auction* find_auction(unsigned int auction_id);
+
+/**
+ * @brief Handle a bid message
+ *
+ * Processes a bid message (CODE=9) received from a peer.
+ *
+ * @param msg The bid message to handle
+ * @return 0 on success, negative value on error
+ */
+int handle_bid(struct message *msg);
+
+/**
+ * @brief Handle a supervisor bid message
+ *
+ * Processes a bid message relayed by the supervisor (CODE=10).
+ *
+ * @param msg The supervisor bid message to handle
+ * @return 0 on success, negative value on error
+ */
+int handle_supervisor_bid(struct message *msg);
+
+/**
+ * @brief Send an auction end warning
+ *
+ * Sends a message (CODE=11) to warn that an auction is about to end.
+ *
+ * @param auction_id The identifier of the auction
+ * @return 0 on success, negative value on error
+ */
+int send_end_warning(unsigned int auction_id);
+
+/**
+ * @brief Finalize an auction
+ *
+ * Finalizes an auction by sending a message (CODE=12) with the winner information.
+ *
+ * @param auction_id The identifier of the auction
+ * @return 0 on success, negative value on error
+ */
+int finalize_auction(unsigned int auction_id);
+
+/**
+ * @brief Quit the auction system
+ *
+ * Sends a message (CODE=13) to inform that the peer is leaving the auction system.
+ *
+ * @return 0 on success, negative value on error
+ */
+int quit_auction_system();
+
+/**
+ * @brief Monitoring function for auctions
+ *
+ * Thread function that periodically checks the status of auctions and 
+ * triggers warnings or finalizations as needed.
+ *
+ * @param arg Thread argument (not used)
+ * @return NULL
+ */
+void *auction_monitor(void *arg);
 
 #endif /* AUCTION_H */
