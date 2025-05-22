@@ -32,9 +32,9 @@ int init_pairs() {
   pSystem.my_port = 8000;
 
   // Default multicast addresses
-  strcpy(pSystem.liaison_addr, "ff02::1");
+  strcpy(pSystem.liaison_addr, "ff12::");
   pSystem.liaison_port = 8080;
-  strcpy(pSystem.auction_addr, "ff02::2");
+  strcpy(pSystem.auction_addr, "ff12::");
   pSystem.auction_port = 8081;
 
   return 0;
