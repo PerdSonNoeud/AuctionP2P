@@ -27,12 +27,23 @@ int monitor_running = 0;
 pthread_mutex_t auction_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int init_auction_system() {
+  // Vérifier que le système n'a pas déjà été initialisé
+  if (auctionSys.auctions != NULL) {
+    printf("Le système d'enchères est déjà initialisé\n");
+    return 0;
+  }
+
+  // Allouer la mémoire initiale pour le tableau d'enchères
   auctionSys.auctions = malloc(10 * sizeof(struct Auction));
   if (!auctionSys.auctions) {
-    perror("malloc a échoué");
+    perror("malloc a échoué pour le tableau d'enchères");
     return -1;
   }
 
+  // Initialiser tous les champs à zéro
+  memset(auctionSys.auctions, 0, 10 * sizeof(struct Auction));
+  
+  // Initialiser les autres champs de la structure
   auctionSys.count = 0;
   auctionSys.capacity = 10;
   
@@ -42,24 +53,38 @@ int init_auction_system() {
   // Initialiser le mutex
   pthread_mutex_init(&auction_mutex, NULL);
   
+  printf("Système d'enchères initialisé avec succès\n");
   return 0;
 }
 
 void cleanup_auction_system() {
+  // Prendre le verrou avant le nettoyage
+  pthread_mutex_lock(&auction_mutex);
+  
   // Arrêter le thread de surveillance
   if (monitor_running) {
     monitor_running = 0;
+    
+    // Relâcher le verrou pendant que nous attendons le thread
+    pthread_mutex_unlock(&auction_mutex);
     pthread_join(auction_monitor_thread, NULL);
+    pthread_mutex_lock(&auction_mutex);
   }
 
-  // Libérer le mutex
-  pthread_mutex_destroy(&auction_mutex);
-
-  // Libérer la mémoire
-  free(auctionSys.auctions);
-  auctionSys.auctions = NULL;
+  // Libérer la mémoire des enchères
+  if (auctionSys.auctions != NULL) {
+    free(auctionSys.auctions);
+    auctionSys.auctions = NULL;
+  }
+  
   auctionSys.count = 0;
   auctionSys.capacity = 0;
+  
+  // Libérer le mutex
+  pthread_mutex_unlock(&auction_mutex);
+  pthread_mutex_destroy(&auction_mutex);
+  
+  printf("Système d'enchères nettoyé avec succès\n");
 }
 
 // Fonction qui génère un ID unique pour une enchère
@@ -82,28 +107,52 @@ struct Auction* find_auction(unsigned int auction_id) {
 unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
   pthread_mutex_lock(&auction_mutex);
   
+  // Vérifier que creator est valide
+  if (!creator) {
+    fprintf(stderr, "Erreur: Créateur invalide\n");
+    pthread_mutex_unlock(&auction_mutex);
+    return 0;
+  }
+
+  // Vérifier si nous avons besoin d'augmenter la capacité
   if (auctionSys.count >= auctionSys.capacity) {
-    auctionSys.capacity *= 2;
-    auctionSys.auctions = realloc(auctionSys.auctions, auctionSys.capacity * sizeof(struct Auction));
-    if (!auctionSys.auctions) {
+    size_t new_capacity = auctionSys.capacity * 2;
+    struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
+    
+    if (!new_auctions) {
       perror("Échec de la réallocation du tableau d'enchères");
       pthread_mutex_unlock(&auction_mutex);
       return 0;
     }
+    
+    auctionSys.auctions = new_auctions;
+    auctionSys.capacity = new_capacity;
+    
+    // Initialiser les nouveaux éléments à zéro
+    memset(&auctionSys.auctions[auctionSys.count], 0, 
+           (new_capacity - auctionSys.count) * sizeof(struct Auction));
   }
 
   // Générer un nouvel ID d'enchère
   unsigned int auction_id = generate_auction_id();
 
-  struct Auction *new_auction = &auctionSys.auctions[auctionSys.count++];
+  // Ajouter la nouvelle enchère à la fin du tableau
+  struct Auction *new_auction = &auctionSys.auctions[auctionSys.count];
+  
   new_auction->auction_id = auction_id;
   new_auction->creator_id = creator->id;
   new_auction->initial_price = initial_price;
   new_auction->current_price = initial_price;
-  new_auction->id_dernier_prop = creator->id; // Au début, le créateur est considéré comme le dernier proposant
+  new_auction->id_dernier_prop = creator->id;
   new_auction->start_time = time(NULL);
   new_auction->last_bid_time = time(NULL);
+  
+  // Incrémenter le compteur d'enchères APRÈS avoir initialisé tous les champs
+  auctionSys.count++;
 
+  printf("Enchère %u créée avec succès (count=%d, capacity=%d)\n", 
+         auction_id, auctionSys.count, auctionSys.capacity);
+  
   pthread_mutex_unlock(&auction_mutex);
   return auction_id;
 }
@@ -121,11 +170,13 @@ void start_auction(unsigned int auction_id) {
   auction->start_time = time(NULL);
   auction->last_bid_time = time(NULL);
 
+  // Débloquer le mutex pendant la préparation du réseau
+  pthread_mutex_unlock(&auction_mutex);
+
   // Prépare et envoie le message CODE_NOUVELLE_VENTE (CODE=8)
   int send_sock = setup_multicast_sender();
   if (send_sock < 0) {
     perror("Échec de création du socket d'envoi multicast");
-    pthread_mutex_unlock(&auction_mutex);
     return;
   }
 
@@ -133,15 +184,20 @@ void start_auction(unsigned int auction_id) {
   if (!msg) {
     perror("Échec de l'initialisation du message");
     close(send_sock);
-    pthread_mutex_unlock(&auction_mutex);
     return;
   }
 
   msg->id = pSystem.my_id;
   msg->numv = auction_id;
   msg->prix = auction->initial_price;
-  message_set_mess(msg, "Nouvelle enchère");
-  message_set_sig(msg, "");
+  
+  if (message_set_mess(msg, "Nouvelle enchère") < 0 || 
+      message_set_sig(msg, "") < 0) {
+    perror("Échec de l'initialisation des champs du message");
+    free_message(msg);
+    close(send_sock);
+    return;
+  }
   
   // Convertir le message en buffer
   int buffer_size = get_buffer_size(msg);
@@ -150,16 +206,16 @@ void start_auction(unsigned int auction_id) {
     perror("Échec de l'allocation du buffer");
     free_message(msg);
     close(send_sock);
-    pthread_mutex_unlock(&auction_mutex);
     return;
   }
+  
+  memset(buffer, 0, buffer_size); // Initialiser le buffer à zéro
   
   if (message_to_buffer(msg, buffer, buffer_size) < 0) {
     perror("Échec de la conversion du message en buffer");
     free(buffer);
     free_message(msg);
     close(send_sock);
-    pthread_mutex_unlock(&auction_mutex);
     return;
   }
 
@@ -176,14 +232,21 @@ void start_auction(unsigned int auction_id) {
   
   printf("Nouvelle vente %u lancée avec prix initial %u\n", auction_id, auction->initial_price);
 
+  // Libérer les ressources
   free(buffer);
   free_message(msg);
   close(send_sock);
 
+  // Reprendre le verrou pour la dernière opération
+  pthread_mutex_lock(&auction_mutex);
+  
   // Démarrer le thread de surveillance si nécessaire
   if (!monitor_running) {
     monitor_running = 1;
-    pthread_create(&auction_monitor_thread, NULL, auction_monitor, NULL);
+    if (pthread_create(&auction_monitor_thread, NULL, auction_monitor, NULL) != 0) {
+      perror("Échec de la création du thread de surveillance");
+      monitor_running = 0;
+    }
   }
   
   pthread_mutex_unlock(&auction_mutex);
@@ -641,6 +704,13 @@ void *auction_monitor(void *arg) {
 unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_price, unsigned int specified_id) {
   pthread_mutex_lock(&auction_mutex);
   
+  // Vérifier que creator est valide
+  if (!creator) {
+    fprintf(stderr, "Erreur: Créateur invalide\n");
+    pthread_mutex_unlock(&auction_mutex);
+    return 0;
+  }
+  
   // Vérifier si l'enchère existe déjà
   for (int i = 0; i < auctionSys.count; i++) {
     if (auctionSys.auctions[i].auction_id == specified_id) {
@@ -651,17 +721,28 @@ unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_pri
     }
   }
   
+  // Vérifier si nous avons besoin d'augmenter la capacité
   if (auctionSys.count >= auctionSys.capacity) {
-    auctionSys.capacity *= 2;
-    auctionSys.auctions = realloc(auctionSys.auctions, auctionSys.capacity * sizeof(struct Auction));
-    if (!auctionSys.auctions) {
+    size_t new_capacity = auctionSys.capacity * 2;
+    struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
+    
+    if (!new_auctions) {
       perror("Échec de la réallocation du tableau d'enchères");
       pthread_mutex_unlock(&auction_mutex);
       return 0;
     }
+    
+    auctionSys.auctions = new_auctions;
+    auctionSys.capacity = new_capacity;
+    
+    // Initialiser les nouveaux éléments à zéro
+    memset(&auctionSys.auctions[auctionSys.count], 0, 
+           (new_capacity - auctionSys.count) * sizeof(struct Auction));
   }
 
-  struct Auction *new_auction = &auctionSys.auctions[auctionSys.count++];
+  // Ajouter la nouvelle enchère à la fin du tableau
+  struct Auction *new_auction = &auctionSys.auctions[auctionSys.count];
+  
   new_auction->auction_id = specified_id;
   new_auction->creator_id = creator->id;
   new_auction->initial_price = initial_price;
@@ -669,6 +750,9 @@ unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_pri
   new_auction->id_dernier_prop = creator->id;
   new_auction->start_time = time(NULL);
   new_auction->last_bid_time = time(NULL);
+
+  // Incrémenter le compteur d'enchères APRÈS avoir initialisé tous les champs
+  auctionSys.count++;
 
   printf("Enchère %u synchronisée avec succès (créateur: %d, prix: %u)\n", 
          specified_id, creator->id, initial_price);
@@ -694,42 +778,93 @@ int broadcast_all_auctions() {
     return -1;
   }
   
-  printf("Diffusion de %d enchères existantes...\n", auctionSys.count);
-  
-  for (int i = 0; i < auctionSys.count; i++) {
-    struct Auction *auction = &auctionSys.auctions[i];
-    
-    struct message *auction_msg = init_message(CODE_NOUVELLE_VENTE);
-    if (auction_msg) {
-      auction_msg->id = pSystem.my_id;
-      auction_msg->numv = auction->auction_id;
-      auction_msg->prix = auction->initial_price;
-      message_set_mess(auction_msg, "Synchronisation d'enchère");
-      message_set_sig(auction_msg, "");
-      
-      int auction_buffer_size = get_buffer_size(auction_msg);
-      char *auction_buffer = malloc(auction_buffer_size);
-      
-      if (auction_buffer) {
-        message_to_buffer(auction_msg, auction_buffer, auction_buffer_size);
-        
-        printf("Diffusion de l'enchère %u (prix=%u)...\n", 
-               auction->auction_id, auction->initial_price);
-        
-        // Envoyer plusieurs fois pour augmenter les chances de réception
-        for (int j = 0; j < 3; j++) {
-          send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, 
-                        auction_buffer, auction_buffer_size);
-          usleep(100000); // 100ms entre chaque envoi
-        }
-        
-        free(auction_buffer);
-      }
-      free_message(auction_msg);
-    }
+  // Copier les données des enchères pour éviter de garder le mutex verrouillé
+  // pendant les opérations réseau
+  struct Auction *auctions_copy = malloc(auctionSys.count * sizeof(struct Auction));
+  if (!auctions_copy) {
+    perror("Échec de l'allocation mémoire pour la copie des enchères");
+    close(send_sock);
+    pthread_mutex_unlock(&auction_mutex);
+    return -1;
   }
   
-  close(send_sock);
+  // Copier seulement les informations nécessaires
+  int count = auctionSys.count;
+  for (int i = 0; i < count; i++) {
+    auctions_copy[i].auction_id = auctionSys.auctions[i].auction_id;
+    auctions_copy[i].creator_id = auctionSys.auctions[i].creator_id;
+    auctions_copy[i].initial_price = auctionSys.auctions[i].initial_price;
+  }
+  
+  // Libérer le mutex après avoir copié les données
   pthread_mutex_unlock(&auction_mutex);
-  return auctionSys.count;
+  
+  printf("Diffusion de %d enchères existantes...\n", count);
+  
+  int success_count = 0;
+  
+  for (int i = 0; i < count; i++) {
+    struct message *auction_msg = init_message(CODE_NOUVELLE_VENTE);
+    if (!auction_msg) {
+      perror("Échec de l'initialisation du message");
+      continue;
+    }
+    
+    auction_msg->id = pSystem.my_id;
+    auction_msg->numv = auctions_copy[i].auction_id;
+    auction_msg->prix = auctions_copy[i].initial_price;
+    
+    if (message_set_mess(auction_msg, "Synchronisation d'enchère") < 0 || 
+        message_set_sig(auction_msg, "") < 0) {
+      perror("Échec de l'initialisation des champs du message");
+      free_message(auction_msg);
+      continue;
+    }
+    
+    int auction_buffer_size = get_buffer_size(auction_msg);
+    char *auction_buffer = malloc(auction_buffer_size);
+    
+    if (!auction_buffer) {
+      perror("Échec de l'allocation du buffer");
+      free_message(auction_msg);
+      continue;
+    }
+    
+    memset(auction_buffer, 0, auction_buffer_size);
+    
+    if (message_to_buffer(auction_msg, auction_buffer, auction_buffer_size) < 0) {
+      perror("Échec de la conversion du message en buffer");
+      free(auction_buffer);
+      free_message(auction_msg);
+      continue;
+    }
+    
+    printf("Diffusion de l'enchère %u (prix=%u)...\n", 
+           auctions_copy[i].auction_id, auctions_copy[i].initial_price);
+    
+    // Envoyer plusieurs fois pour augmenter les chances de réception
+    int send_success = 0;
+    for (int j = 0; j < 3; j++) {
+      if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, 
+                      auction_buffer, auction_buffer_size) >= 0) {
+        send_success = 1;
+      }
+      usleep(100000); // 100ms entre chaque envoi
+    }
+    
+    if (send_success) {
+      success_count++;
+    }
+    
+    free(auction_buffer);
+    free_message(auction_msg);
+  }
+  
+  free(auctions_copy);
+  close(send_sock);
+  
+  printf("Diffusion terminée : %d/%d enchères diffusées avec succès\n", 
+         success_count, count);
+  
+  return success_count;
 }
