@@ -95,13 +95,6 @@ int join_auction() {
     return -1;
   }
 
-  // Afficher le contenu du buffer pour débogage
-  printf("Contenu du buffer envoyé: ");
-  for (int i = 0; i < 20 && i < buffer_size; i++) {
-    printf("%c", buffer[i]);
-  }
-  printf("\n");
-
   int result = send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port,
                               buffer, buffer_size);
   if (result < 0) {
@@ -125,20 +118,26 @@ int join_auction() {
   // Wait for response
   struct sockaddr_in6 sender;
   int attempts = 0;
+  int connected = 0;
+  
+  // Mémoriser les messages déjà traités pour éviter les doublons
+  char last_processed[1024] = {0};
   
   // Allouer le buffer une seule fois en dehors de la boucle
   char recv_buffer[1024];
   memset(recv_buffer, 0, sizeof(recv_buffer));
 
-  while (attempts < MAX_ATTEMPTS) {
+  while (!connected && attempts < MAX_ATTEMPTS) {
     int len = receive_multicast(recv_sock, recv_buffer, sizeof(recv_buffer), &sender);
     if (len > 0) {
-      // Afficher le contenu du buffer pour débogage
-      printf("Contenu du buffer reçu (%d octets): ", len);
-      for (int i = 0; i < 20 && i < len; i++) {
-        printf("%c", recv_buffer[i]);
+      // Si c'est exactement le même message que le dernier traité, l'ignorer
+      if (strcmp(recv_buffer, last_processed) == 0) {
+        printf("Message ignoré : doublon\n");
+        continue;
       }
-      printf("\n");
+      
+      // Mémoriser ce message comme traité
+      strncpy(last_processed, recv_buffer, sizeof(last_processed) - 1);
       
       struct message *response = malloc(sizeof(struct message));
       if (response == NULL) {
@@ -155,17 +154,7 @@ int join_auction() {
       if (buffer_to_message(response, recv_buffer) < 0) {
         perror("buffer_to_message a échoué");
         free_message(response);
-        attempts++;
-        
-        if (attempts < MAX_ATTEMPTS) {
-          printf("Nouvelle tentative de réception (%d/%d)...\n", attempts + 1, MAX_ATTEMPTS);
-          sleep(1);
-          continue;  // Essayer à nouveau plutôt que d'abandonner
-        } else {
-          close(send_sock);
-          close(recv_sock);
-          return -1;
-        }
+        continue;
       }
 
       // Obtenir l'adresse IP de l'expéditeur sous forme de chaîne
@@ -176,10 +165,9 @@ int join_auction() {
       char my_ip_str[INET6_ADDRSTRLEN];
       inet_ntop(AF_INET6, &pSystem.my_ip, my_ip_str, sizeof(my_ip_str));
 
-      // Ignorer nos propres messages (même ID ET même adresse IP)
-      if (response->id == pSystem.my_id && response->code == CODE_DEMANDE_LIAISON && 
-          strcmp(sender_ip_str, my_ip_str) == 0) {
-        printf("Ignoré: notre propre message de demande de connexion (même ID et IP)\n");
+      // Ignorer nos propres messages (même ID OU même adresse IP)
+      if (response->id == pSystem.my_id || strcmp(sender_ip_str, my_ip_str) == 0) {
+        printf("Ignoré: notre propre message\n");
         free_message(response);
         continue;
       }
@@ -207,9 +195,7 @@ int join_auction() {
         sleep(3);
         
         free_message(response);
-        close(send_sock);
-        close(recv_sock);
-        return 0; // Successfully joined existing system
+        connected = 1;
       } else {
         printf("Message reçu mais code incorrect: %d\n", response->code);
         free_message(response);
@@ -221,7 +207,7 @@ int join_auction() {
     }
 
     attempts++;
-    if (attempts < MAX_ATTEMPTS) {
+    if (!connected && attempts < MAX_ATTEMPTS) {
       // Resend the request for each new attempt
       if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, buffer, buffer_size) < 0) {
         printf("Échec du renvoi de la demande\n");
@@ -230,8 +216,6 @@ int join_auction() {
       }
 
       sleep(1); // Wait before retrying
-    } else {
-      printf("Nombre maximal de tentatives atteint, aucune réponse reçue\n");
     }
   }
 
@@ -239,7 +223,8 @@ int join_auction() {
   free_message(request);
   close(send_sock);
   close(recv_sock);
-  return -1; // Connection failed
+  
+  return connected ? 0 : -1; // Return 0 if connected, -1 if not
 }
 
 int handle_join(int sock) {
@@ -252,12 +237,19 @@ int handle_join(int sock) {
     return 0; // No data or error
   }
 
-  // Display received raw data for debugging
-  printf("Données reçues (%d octets): ", len);
-  for (int i = 0; i < 20 && i < len; i++) {
-    printf("%c", buffer[i]);
+  // Mémoriser les derniers messages pour éviter les doublons
+  static char last_message[1024] = {0};
+  static time_t last_message_time = 0;
+  time_t now = time(NULL);
+  
+  // Si c'est exactement le même message reçu dans les 2 dernières secondes, l'ignorer
+  if (strcmp(buffer, last_message) == 0 && difftime(now, last_message_time) < 2) {
+    return 0; // Ignorer les doublons récents
   }
-  printf("\n");
+  
+  // Mémoriser ce message
+  strncpy(last_message, buffer, sizeof(last_message) - 1);
+  last_message_time = now;
 
   struct message *msg = malloc(sizeof(struct message));
   if (msg == NULL) {
@@ -288,15 +280,36 @@ int handle_join(int sock) {
     char my_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &pSystem.my_ip, my_ip_str, sizeof(my_ip_str));
     
-    // Vérifier si c'est notre propre message (même ID ET même adresse IP)
-    if (msg->id == pSystem.my_id && strcmp(sender_ip_str, my_ip_str) == 0) {
-      printf("Message ignoré : c'est notre propre demande de connexion (même ID et IP)\n");
+    // Vérifier si c'est notre propre message (même ID OU même adresse IP)
+    if (msg->id == pSystem.my_id || strcmp(sender_ip_str, my_ip_str) == 0) {
+      printf("Message ignoré : c'est notre propre demande de connexion\n");
+      free_message(msg);
+      return 0;
+    }
+
+    // Vérifier si ce pair est déjà dans notre liste
+    int already_exists = 0;
+    for (int i = 0; i < pSystem.count; i++) {
+      if (pSystem.pairs[i].id == msg->id && pSystem.pairs[i].active) {
+        char existing_ip[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &pSystem.pairs[i].ip, existing_ip, sizeof(existing_ip));
+        
+        if (strcmp(existing_ip, sender_ip_str) == 0) {
+          printf("Pair %d déjà dans la liste, ignoré\n", msg->id);
+          already_exists = 1;
+          break;
+        }
+      }
+    }
+    
+    if (already_exists) {
       free_message(msg);
       return 0;
     }
 
     // Display requester info
-    printf("Demande de connexion de ID=%d, IP=%s, Port=%d\n", msg->id, sender_ip_str, ntohs(sender.sin6_port));
+    printf("Demande de connexion de ID=%d, IP=%s, Port=%d\n", 
+           msg->id, sender_ip_str, ntohs(sender.sin6_port));
 
     // Add this peer to our list with IP from sender address
     msg->ip = sender.sin6_addr; // Use the actual sender IP
@@ -348,14 +361,7 @@ int handle_join(int sock) {
       return -1;
     }
 
-    // Debug response before sending
-    printf("Contenu du buffer de réponse: ");
-    for (int i = 0; i < 20 && i < resp_buffer_size; i++) {
-      printf("%c", resp_buffer[i]);
-    }
-    printf("\n");
-
-    // Send the response
+    // Envoyer UNE SEULE FOIS la réponse
     printf("Envoi de la réponse au demandeur...\n");
     if (send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port,
                       resp_buffer, resp_buffer_size) < 0) {
@@ -396,9 +402,9 @@ int handle_join(int sock) {
     char my_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &pSystem.my_ip, my_ip_str, sizeof(my_ip_str));
     
-    // Ignorer nos propres réponses (même ID ET même adresse IP)
-    if (msg->id == pSystem.my_id && strcmp(sender_ip_str, my_ip_str) == 0) {
-      printf("Message ignoré : c'est notre propre réponse de connexion (même ID et IP)\n");
+    // Ignorer nos propres réponses (même ID OU même adresse IP)
+    if (msg->id == pSystem.my_id || strcmp(sender_ip_str, my_ip_str) == 0) {
+      printf("Message ignoré : c'est notre propre réponse de connexion\n");
       free_message(msg);
       return 0;
     }

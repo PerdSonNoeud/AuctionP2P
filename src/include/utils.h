@@ -39,4 +39,12 @@ int message_to_buffer(struct message *msg, char *buffer, int buffer_size);
  */
 int buffer_to_message(struct message* msg, char *buffer);
 
+/**
+ * @brief Affiche le nombre de descripteurs de fichiers ouverts par le processus
+ * 
+ * Cette fonction affiche le nombre de descripteurs de fichiers (sockets, fichiers, etc.)
+ * actuellement ouverts par le processus.
+ */
+void print_open_files();
+
 #endif /* UTILS_H */

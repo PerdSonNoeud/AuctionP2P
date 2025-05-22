@@ -89,9 +89,10 @@ void cleanup_auction_system() {
 
 // Fonction qui génère un ID unique pour une enchère
 unsigned int generate_auction_id() {
+  // Incrémenter simplement le compteur pour avoir des IDs séquentiels
+  // Commencer à 1 car 0 est souvent utilisé comme valeur d'erreur
   auction_counter++;
-  // Concaténation de l'ID du pair et du compteur
-  return ((uint32_t)pSystem.my_id << 16) | auction_counter;
+  return auction_counter;
 }
 
 // Fonction pour trouver une enchère par son ID
@@ -223,11 +224,11 @@ void start_auction(unsigned int auction_id) {
   printf("Diffusion de la nouvelle enchère %u (prix initial %u) à tous les pairs...\n", 
          auction_id, auction->initial_price);
   
-  for (int i = 0; i < 5; i++) {  // Envoyer 5 fois
+  for (int i = 0; i < 2; i++) {  // Réduire à 2 envois au lieu de 5
     if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0) {
       perror("Échec de l'envoi de l'annonce de nouvelle vente");
     }
-    usleep(100000);  // Attendre 100ms entre chaque envoi
+    usleep(200000);  // Augmenter légèrement l'intervalle à 200ms
   }
   
   printf("Nouvelle vente %u lancée avec prix initial %u\n", auction_id, auction->initial_price);
@@ -844,12 +845,12 @@ int broadcast_all_auctions() {
     
     // Envoyer plusieurs fois pour augmenter les chances de réception
     int send_success = 0;
-    for (int j = 0; j < 3; j++) {
+    for (int j = 0; j < 2; j++) {  // Réduire à 2 envois au lieu de 3
       if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, 
                       auction_buffer, auction_buffer_size) >= 0) {
         send_success = 1;
       }
-      usleep(100000); // 100ms entre chaque envoi
+      usleep(200000); // Augmenter légèrement l'intervalle à 200ms
     }
     
     if (send_success) {

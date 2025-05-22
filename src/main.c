@@ -24,7 +24,7 @@ void sync_auctions();
 // Fonction pour traiter les messages d'enchère reçus
 int handle_auction_message(int sock) {
     struct sockaddr_in6 sender;
-    char buffer[2048]; // Buffer statique avec taille augmentée (2048 au lieu de 1024)
+    char buffer[2048]; // Buffer statique avec taille augmentée
     memset(buffer, 0, sizeof(buffer));
 
     int len = receive_multicast(sock, buffer, sizeof(buffer), &sender);
@@ -32,24 +32,23 @@ int handle_auction_message(int sock) {
         return 0; // Pas de données ou erreur
     }
 
-    // Afficher les données reçues pour débogage
-    printf("Données d'enchère reçues (%d octets): ", len);
-    for (int i = 0; i < len && i < 20; i++) {
-        printf("%02x ", (unsigned char)buffer[i]);
+    // Mémoriser les derniers messages pour éviter les doublons
+    static char last_message[2048] = {0};
+    static time_t last_message_time = 0;
+    time_t now = time(NULL);
+    
+    // Si c'est exactement le même message reçu dans les 2 dernières secondes, l'ignorer
+    if (strcmp(buffer, last_message) == 0 && difftime(now, last_message_time) < 2) {
+        return 0; // Ignorer les doublons récents
     }
-    printf("\n");
-
-    // Afficher le début du contenu en texte aussi
-    printf("Contenu du message: '");
-    for (int i = 0; i < len && i < 30; i++) {
-        if (buffer[i] >= 32 && buffer[i] <= 126) { // Caractères imprimables ASCII
-            printf("%c", buffer[i]);
-        } else {
-            printf(".");
-        }
-    }
-    printf("'\n");
-
+    
+    // Mémoriser ce message
+    strncpy(last_message, buffer, sizeof(last_message) - 1);
+    last_message_time = now;
+    
+    // Affichage réduit des données reçues pour débogage
+    printf("Message d'enchère reçu (%d octets)\n", len);
+    
     struct message *msg = malloc(sizeof(struct message));
     if (msg == NULL) {
         perror("malloc a échoué");
@@ -67,7 +66,8 @@ int handle_auction_message(int sock) {
         return -1;
     }
 
-    printf("Message d'enchère reçu - Code: %d, ID: %d", msg->code, msg->id);
+    // Affichage simplifié du message
+    printf("Message code: %d, ID: %d", msg->code, msg->id);
     if (msg->code == CODE_NOUVELLE_VENTE || msg->code == CODE_ENCHERE || 
         msg->code == CODE_ENCHERE_SUPERVISEUR || msg->code == CODE_FIN_VENTE) {
         printf(", NUMV: %u, PRIX: %u", msg->numv, msg->prix);
@@ -388,6 +388,10 @@ void create_network() {
     printf("Port: %d\n", pSystem.my_port);
     printf("Adresse multicast liaison: %s:%d\n", pSystem.liaison_addr, pSystem.liaison_port);
     printf("Adresse multicast enchères: %s:%d\n", pSystem.auction_addr, pSystem.auction_port);
+    
+    // Afficher le nombre de descripteurs ouverts
+    print_open_files();
+    
     printf("\nEn attente de connexions et d'enchères...\n");
 
     // Configuration pour poll
@@ -497,6 +501,10 @@ void create_network() {
     close(auction_recv_sock);
     close(send_sock);
     
+    // Vérifier les descripteurs de fichiers après fermeture
+    printf("Après fermeture des sockets:\n");
+    print_open_files();
+    
     // Nettoyer le système d'enchères
     cleanup_auction_system();
 
@@ -576,6 +584,9 @@ void join_network() {
                i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
                pSystem.pairs[i].active ? "Oui" : "Non");
     }
+    
+    // Afficher le nombre de descripteurs ouverts
+    print_open_files();
 
     // Attendre explicitement les messages d'enchères pendant quelques secondes
     printf("Attente des informations d'enchères en cours...\n");
@@ -723,6 +734,10 @@ void join_network() {
     close(recv_sock);
     close(auction_recv_sock);
     close(send_sock);
+    
+    // Vérifier les descripteurs de fichiers après fermeture
+    printf("Après fermeture des sockets:\n");
+    print_open_files();
     
     // Nettoyer le système d'enchères
     cleanup_auction_system();

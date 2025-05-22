@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <dirent.h>
+#include <unistd.h> // Pour getpid()
 
 int nbDigits (int n) {
   if (n < 0) n = -n; // Traiter les nombres négatifs
@@ -127,8 +129,8 @@ int buffer_to_message(struct message *msg, char *buffer) {
   msg->prix = 0;
   msg->nb = 0;
 
-  // Debug the received buffer
-  printf("Analyse du buffer: '%s'\n", buffer);
+  // Debug mode - désactivé pour réduire la verbosité
+  // printf("Analyse du buffer: '%s'\n", buffer);
 
   // Copy the buffer to avoid modifying the original
   char *buffer_copy = strdup(buffer);
@@ -148,7 +150,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     return -1;
   }
   msg->code = atoi(token);
-  printf("Parsed CODE: %d\n", msg->code);
+  // printf("Parsed CODE: %d\n", msg->code);
 
   // Extract ID
   token = strtok_r(NULL, SEPARATOR, &saveptr);
@@ -158,7 +160,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     return -1;
   }
   msg->id = (uint16_t)atoi(token);
-  printf("Parsed ID: %d\n", msg->id);
+  // printf("Parsed ID: %d\n", msg->id);
 
   // Extract LMESS
   token = strtok_r(NULL, SEPARATOR, &saveptr);
@@ -168,7 +170,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     return -1;
   }
   msg->lmess = (uint8_t)atoi(token);
-  printf("Parsed LMESS: %d\n", msg->lmess);
+  // printf("Parsed LMESS: %d\n", msg->lmess);
 
   // Extract MESS
   token = strtok_r(NULL, SEPARATOR, &saveptr);
@@ -187,7 +189,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     }
     strncpy(msg->mess, token, msg->lmess);
     msg->mess[msg->lmess] = '\0';
-    printf("Parsed MESS: '%s'\n", msg->mess);
+    // printf("Parsed MESS: '%s'\n", msg->mess);
   } else if (strlen(token) > 0) {
     // Si LMESS est 0 mais qu'il y a un message, on l'affecte quand même
     msg->lmess = strlen(token);
@@ -198,7 +200,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
       return -1;
     }
     strcpy(msg->mess, token);
-    printf("Parsed MESS (with calculated length): '%s'\n", msg->mess);
+    // printf("Parsed MESS (with calculated length): '%s'\n", msg->mess);
   }
 
   // Extract LSIG
@@ -210,7 +212,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     return -1;
   }
   msg->lsig = (uint8_t)atoi(token);
-  printf("Parsed LSIG: %d\n", msg->lsig);
+  // printf("Parsed LSIG: %d\n", msg->lsig);
 
   // Extract SIG
   token = strtok_r(NULL, SEPARATOR, &saveptr);
@@ -232,7 +234,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
       }
       strncpy(msg->sig, token, msg->lsig);
       msg->sig[msg->lsig] = '\0';
-      printf("Parsed SIG: '%s'\n", msg->sig);
+      // printf("Parsed SIG: '%s'\n", msg->sig);
     } else if (strlen(token) > 0) {
       // Si LSIG est 0 mais qu'il y a une signature, on l'affecte quand même
       msg->lsig = strlen(token);
@@ -244,7 +246,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
         return -1;
       }
       strcpy(msg->sig, token);
-      printf("Parsed SIG (with calculated length): '%s'\n", msg->sig);
+      // printf("Parsed SIG (with calculated length): '%s'\n", msg->sig);
     }
   }
   
@@ -260,7 +262,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
       printf("Warning: missing NUMV field\n");
     } else {
       msg->numv = (uint32_t)atoi(token);
-      printf("Parsed NUMV: %u\n", msg->numv);
+      // printf("Parsed NUMV: %u\n", msg->numv);
       
       // Extract PRIX
       token = strtok_r(NULL, SEPARATOR, &saveptr);
@@ -269,7 +271,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
         printf("Warning: missing PRIX field\n");
       } else {
         msg->prix = (uint32_t)atoi(token);
-        printf("Parsed PRIX: %u\n", msg->prix);
+        // printf("Parsed PRIX: %u\n", msg->prix);
       }
     }
   }
@@ -277,4 +279,29 @@ int buffer_to_message(struct message *msg, char *buffer) {
   // Release memory
   free(buffer_copy);
   return 0;
+}
+
+// Fonction pour afficher le nombre de descripteurs de fichiers ouverts par le processus
+void print_open_files() {
+  pid_t pid = getpid();
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/fd", pid);
+  
+  DIR *dir = opendir(path);
+  if (dir == NULL) {
+    perror("Impossible d'ouvrir le répertoire /proc/PID/fd");
+    return;
+  }
+  
+  int count = 0;
+  struct dirent *entry;
+  
+  while ((entry = readdir(dir)) != NULL) {
+    if (entry->d_name[0] != '.') {
+      count++;
+    }
+  }
+  
+  closedir(dir);
+  printf("[INFO] Descripteurs de fichiers ouverts: %d\n", count);
 }
