@@ -100,8 +100,6 @@ int setup_unicast_socket(int port) {
   int unicast_sock = socket(AF_INET6, SOCK_DGRAM, 0);
   if (unicast_sock < 0) {
     perror("Échec de création du socket unicast");
-    close(send_sock);
-    close(recv_sock);
     return -1;
   }
 
@@ -113,7 +111,7 @@ int setup_unicast_socket(int port) {
   local_addr.sin6_port = htons(port); // Utiliser notre port pour la réception
 
   // Options pour réutiliser l'adresse/port
-  if (setup_sock_opt(sock) < 0) {
+  if (setup_sock_opt(unicast_sock) < 0) {
     close(unicast_sock);
     return -1;
   }
@@ -126,6 +124,7 @@ int setup_unicast_socket(int port) {
   }
 
   printf("  Socket unicast configuré pour la réception sur port %d\n", port);
+  return unicast_sock;
 }
 
 int send_multicast(int sock, const char *addr, int port, const void *data, size_t len) {

@@ -159,7 +159,7 @@ int join_auction() {
         close(unicast_sock);
         close(send_sock);
         close(recv_sock);
-        return info_received ? 0 : -1;
+        return 0;
       } else {
         if (response->code == 0 || response->code == CODE_DEMANDE_LIAISON) {
           continue; // Ignore empty messages
