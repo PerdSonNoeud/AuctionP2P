@@ -372,6 +372,26 @@ int handle_join(int sock) {
       return -1;
     }
 
+    close(send_sock);
+    send_sock = setup_unicast_sender(response->port);
+    if (send_sock < 0) {
+      perror("setup_unicast_sender a échoué");
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+
+    // Send the response (CODE 4) en unicast vers sender
+    if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
+      perror("send_unicast a échoué");
+      free_message(response);
+      free_message(request);
+      close(send_sock);
+      return -1;
+    }
+    printf("Réponse envoyée avec succès (CODE = 4)\n");
+
     // Conncect to the sender with TCP socket
     int unicast_sock = setup_server_socket(pSystem.my_port);
     if (unicast_sock < 0) {
@@ -389,16 +409,6 @@ int handle_join(int sock) {
       close(send_sock);
       return -1;
     }
-
-    // Send the response (CODE 4) en unicast vers sender
-    if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
-      perror("send_unicast a échoué");
-      free_message(response);
-      free_message(request);
-      close(send_sock);
-      return -1;
-    }
-    printf("Réponse envoyée avec succès (CODE = 4)\n");
 
     struct sockaddr_in6 client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
