@@ -57,7 +57,7 @@ int join_auction() {
     return -1;
   }
 
-  int unicast_sock = setup_server_socket(pSystem.my_port);
+  int unicast_sock = setup_unicast_sender(pSystem.my_port);
 
   // Send a request to join the system
   struct message *request = init_message(CODE_DEMANDE_LIAISON); // CODE = 3 for join request

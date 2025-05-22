@@ -26,6 +26,17 @@ int setup_multicast_receiver(const char *addr, int port);
 int setup_multicast_sender();
 
 /**
+ * @brief Set up a unicast sender socket
+ *
+ * Creates and configures a socket for unicast communication.
+ * The socket is configured in non-blocking mode.
+ *
+ * @param port Port number to bind to
+ * @return Socket file descriptor on success, negative value on error
+ */
+int setup_unicast_sender(int port);
+
+/**
  * @brief Set up a unicast TCP socket
  *
  * Creates and configures a socket for unicast TCP communication.
