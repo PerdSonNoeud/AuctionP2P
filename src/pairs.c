@@ -199,13 +199,12 @@ int join_auction() {
         // Add the peer
         add_pair(response->id, response->ip, response->port);
         
-        // Demander explicitement la liste des enchères actives
+        // Demander explicitement la liste des enchères existantes
         printf("Demande des enchères existantes...\n");
         
-        // Attendre un peu pour que les messages d'enchère puissent arriver
-        // Cela permet au nouveau pair de recevoir les informations envoyées par 
-        // les pairs existants suite à notre connexion
-        sleep(2);
+        // Attendre plus longtemps pour permettre au pair de nous envoyer les enchères existantes
+        printf("Attente de la synchronisation des enchères (3 secondes)...\n");
+        sleep(3);
         
         free_message(response);
         close(send_sock);
@@ -371,32 +370,16 @@ int handle_join(int sock) {
     printf("Réponse envoyée avec succès\n");
     
     // Envoyer les informations sur les enchères existantes au nouveau pair
-    for (int i = 0; i < auctionSys.count; i++) {
-      struct Auction *auction = &auctionSys.auctions[i];
+    if (auctionSys.count > 0) {
+      printf("Envoi de %d enchères existantes au nouveau pair\n", auctionSys.count);
       
-      struct message *auction_msg = init_message(CODE_NOUVELLE_VENTE);
-      if (auction_msg) {
-        auction_msg->id = pSystem.my_id;
-        auction_msg->numv = auction->auction_id;
-        auction_msg->prix = auction->initial_price;
-        
-        int auction_buffer_size = get_buffer_size(auction_msg);
-        char *auction_buffer = malloc(auction_buffer_size);
-        
-        if (auction_buffer) {
-          message_to_buffer(auction_msg, auction_buffer, auction_buffer_size);
-          
-          // Petit délai pour éviter les congestions
-          usleep(100000); // 100ms
-          
-          printf("Envoi des informations de l'enchère %u au nouveau pair\n", auction->auction_id);
-          send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, 
-                          auction_buffer, auction_buffer_size);
-          
-          free(auction_buffer);
-        }
-        free_message(auction_msg);
-      }
+      // Attendre un court instant pour s'assurer que le pair a eu le temps de configurer son récepteur d'enchères
+      usleep(500000); // 500ms
+      
+      // Utiliser la fonction de diffusion de toutes les enchères
+      broadcast_all_auctions();
+    } else {
+      printf("Aucune enchère existante à envoyer au nouveau pair\n");
     }
 
     free(resp_buffer);

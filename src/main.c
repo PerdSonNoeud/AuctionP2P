@@ -18,6 +18,9 @@ int auction_recv_sock = -1;  // Socket pour recevoir les messages d'enchère
 extern struct PairSystem pSystem;  // Declare pSystem as external
 extern struct AuctionSystem auctionSys;  // Declare auctionSys as external
 
+// Déclaration des fonctions
+void sync_auctions();
+
 // Fonction pour traiter les messages d'enchère reçus
 int handle_auction_message(int sock) {
     struct sockaddr_in6 sender;
@@ -31,10 +34,21 @@ int handle_auction_message(int sock) {
 
     // Afficher les données reçues pour débogage
     printf("Données d'enchère reçues (%d octets): ", len);
-    for (int i = 0; i < 10 && i < len; i++) {
+    for (int i = 0; i < len && i < 20; i++) {
         printf("%02x ", (unsigned char)buffer[i]);
     }
     printf("\n");
+
+    // Afficher le début du contenu en texte aussi
+    printf("Contenu du message: '");
+    for (int i = 0; i < len && i < 30; i++) {
+        if (buffer[i] >= 32 && buffer[i] <= 126) { // Caractères imprimables ASCII
+            printf("%c", buffer[i]);
+        } else {
+            printf(".");
+        }
+    }
+    printf("'\n");
 
     struct message *msg = malloc(sizeof(struct message));
     if (msg == NULL) {
@@ -53,6 +67,13 @@ int handle_auction_message(int sock) {
         return -1;
     }
 
+    printf("Message d'enchère reçu - Code: %d, ID: %d", msg->code, msg->id);
+    if (msg->code == CODE_NOUVELLE_VENTE || msg->code == CODE_ENCHERE || 
+        msg->code == CODE_ENCHERE_SUPERVISEUR || msg->code == CODE_FIN_VENTE) {
+        printf(", NUMV: %u, PRIX: %u", msg->numv, msg->prix);
+    }
+    printf("\n");
+
     // Obtenir l'adresse IP de l'expéditeur sous forme de chaîne
     char sender_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
@@ -61,9 +82,8 @@ int handle_auction_message(int sock) {
     char my_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &pSystem.my_ip, my_ip_str, sizeof(my_ip_str));
 
-    // Ignorer uniquement nos propres messages si ce sont exactement les mêmes (même ID ET même IP)
-    // Pour les messages d'enchères et d'enchères superviseur, on les traite même s'ils viennent de nous
-    if (msg->id == pSystem.my_id && 
+    // Pour les nouvelles enchères, nous voulons traiter même nos propres messages pour assurer la cohérence
+    if (msg->code != CODE_NOUVELLE_VENTE && msg->id == pSystem.my_id && 
         strcmp(sender_ip_str, my_ip_str) == 0 &&
         msg->code != CODE_ENCHERE && 
         msg->code != CODE_ENCHERE_SUPERVISEUR) {
@@ -88,18 +108,26 @@ int handle_auction_message(int sock) {
             // Chercher si cette enchère existe déjà
             struct Auction *existing = find_auction(msg->numv);
             if (!existing) {
-                // L'enchère n'existe pas encore, on la crée
-                unsigned int auction_id = init_auction(&creator, msg->prix);
-                printf("Enchère %u ajoutée au système\n", auction_id);
+                // L'enchère n'existe pas encore, on la crée avec l'ID spécifié
+                printf("Création d'une nouvelle enchère avec ID=%u, prix=%u\n", msg->numv, msg->prix);
+                unsigned int auction_id = init_auction_with_id(&creator, msg->prix, msg->numv);
                 
-                // Marquer l'enchère comme démarrée
-                struct Auction *new_auction = find_auction(auction_id);
-                if (new_auction) {
-                    new_auction->start_time = time(NULL);
-                    new_auction->last_bid_time = time(NULL);
+                if (auction_id == 0) {
+                    printf("Erreur: Échec de la création de l'enchère %u\n", msg->numv);
+                } else {
+                    printf("Enchère %u ajoutée au système\n", msg->numv);
+                    // Vérifier que l'enchère est bien dans le système
+                    existing = find_auction(msg->numv);
+                    if (existing) {
+                        printf("Enchère vérifiée dans le système: ID=%u, prix=%u, créateur=%d\n",
+                              existing->auction_id, existing->current_price, existing->creator_id);
+                    } else {
+                        printf("ERREUR: Impossible de trouver l'enchère %u après sa création!\n", msg->numv);
+                    }
                 }
             } else {
-                printf("L'enchère %u existe déjà dans le système\n", msg->numv);
+                printf("L'enchère %u existe déjà dans le système (prix=%u, créateur=%d)\n", 
+                       existing->auction_id, existing->current_price, existing->creator_id);
             }
             break;
             
@@ -484,7 +512,7 @@ void join_network() {
         fprintf(stderr, "Échec de l'initialisation du système de pairs\n");
         return;
     }
-    
+
     // Initialiser le système d'enchères
     if (init_auction_system() < 0) {
         fprintf(stderr, "Échec de l'initialisation du système d'enchères\n");
@@ -504,32 +532,14 @@ void join_network() {
 
     printf("Tentative de connexion avec ID=%d...\n", pSystem.my_id);
 
-    // Essayer de rejoindre le réseau
-    if (join_auction() < 0) {
-        fprintf(stderr, "Échec de la connexion au réseau P2P\n");
-        return;
-    }
-
-    printf("\nConnexion au réseau P2P réussie!\n");
-
-    // Afficher les données du réseau
-    printf("\nPairs actuellement connectés: %d\n", pSystem.count);
-    for (int i = 0; i < pSystem.count; i++) {
-        char ip_str[INET6_ADDRSTRLEN];
-        inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
-        printf("Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
-               i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
-               pSystem.pairs[i].active ? "Oui" : "Non");
-    }
-
-    // Configurer le socket de réception pour recevoir les messages du réseau
+    // Configurer le socket de réception multicast pour la liaison tout de suite
     recv_sock = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
     if (recv_sock < 0) {
         fprintf(stderr, "Échec de la création du socket récepteur multicast pour liaison\n");
         return;
     }
 
-    // Configurer le socket de réception pour les enchères
+    // Configurer le socket de réception multicast pour les enchères tout de suite également
     auction_recv_sock = setup_multicast_receiver(pSystem.auction_addr, pSystem.auction_port);
     if (auction_recv_sock < 0) {
         fprintf(stderr, "Échec de la création du socket récepteur multicast pour enchères\n");
@@ -546,6 +556,58 @@ void join_network() {
         return;
     }
 
+    // Essayer de rejoindre le réseau
+    if (join_auction() < 0) {
+        fprintf(stderr, "Échec de la connexion au réseau P2P\n");
+        close(recv_sock);
+        close(auction_recv_sock);
+        close(send_sock);
+        return;
+    }
+
+    printf("\nConnexion au réseau P2P réussie!\n");
+
+    // Afficher les données du réseau
+    printf("\nPairs actuellement connectés: %d\n", pSystem.count);
+    for (int i = 0; i < pSystem.count; i++) {
+        char ip_str[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
+        printf("Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
+               i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
+               pSystem.pairs[i].active ? "Oui" : "Non");
+    }
+
+    // Attendre explicitement les messages d'enchères pendant quelques secondes
+    printf("Attente des informations d'enchères en cours...\n");
+    time_t start_time = time(NULL);
+    struct sockaddr_in6 sender;
+    
+    // Attendre jusqu'à 5 secondes pour recevoir des messages d'enchères
+    while (difftime(time(NULL), start_time) < 5) {
+        char buffer[1024];
+        memset(buffer, 0, sizeof(buffer));
+        
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(auction_recv_sock, &readfds);
+        
+        // Timeout de 0.5 secondes
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 500000;
+        
+        int select_result = select(auction_recv_sock + 1, &readfds, NULL, NULL, &tv);
+        if (select_result > 0 && FD_ISSET(auction_recv_sock, &readfds)) {
+            int len = receive_multicast(auction_recv_sock, buffer, sizeof(buffer), &sender);
+            if (len > 0) {
+                // Traiter le message d'enchère
+                handle_auction_message(auction_recv_sock);
+            }
+        }
+    }
+    
+    printf("Synchronisation terminée.\n");
+    
     // Configuration pour poll
     struct pollfd fds[3];
     
@@ -567,6 +629,7 @@ void join_network() {
     printf("1 - Créer une enchère\n");
     printf("2 - Faire une offre\n");
     printf("3 - Afficher les enchères actives\n");
+    printf("4 - Synchroniser les enchères\n");
     printf("q - Quitter le programme\n");
     printf("> ");
     fflush(stdout);
@@ -634,11 +697,17 @@ void join_network() {
                     display_auctions();
                     printf("> ");
                     fflush(stdout);
+                } else if (input[0] == '4') {
+                    // Synchroniser les enchères
+                    sync_auctions();
+                    printf("> ");
+                    fflush(stdout);
                 } else {
                     printf("Commande inconnue. Commandes disponibles:\n");
                     printf("1 - Créer une enchère\n");
                     printf("2 - Faire une offre\n");
                     printf("3 - Afficher les enchères actives\n");
+                    printf("4 - Synchroniser les enchères\n");
                     printf("q - Quitter le programme\n");
                     printf("> ");
                     fflush(stdout);
@@ -659,6 +728,20 @@ void join_network() {
     cleanup_auction_system();
 
     printf("Déconnexion du réseau P2P\n");
+}
+
+// Fonction pour synchroniser manuellement les enchères
+void sync_auctions() {
+    printf("\n=== Synchronisation des enchères ===\n");
+    int count = broadcast_all_auctions();
+    
+    if (count > 0) {
+        printf("%d enchères diffusées avec succès\n", count);
+    } else if (count == 0) {
+        printf("Aucune enchère à synchroniser\n");
+    } else {
+        printf("Erreur lors de la synchronisation des enchères\n");
+    }
 }
 
 // Main function

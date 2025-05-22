@@ -57,6 +57,19 @@ void cleanup_auction_system();
 unsigned int init_auction(struct Pair *creator, unsigned int initial_price);
 
 /**
+ * @brief Create a new auction with a specified ID
+ *
+ * Initializes a new auction with the given creator, initial price, and auction ID.
+ * This function is used primarily for synchronization between peers.
+ *
+ * @param creator Pointer to the peer creating the auction
+ * @param initial_price Starting price for the auction
+ * @param specified_id The specific auction ID to use
+ * @return The auction identifier on success, 0 on failure
+ */
+unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_price, unsigned int specified_id);
+
+/**
  * @brief Start an auction
  *
  * Marks an auction as started and sets its start time.
@@ -165,5 +178,15 @@ int quit_auction_system();
  * @return NULL
  */
 void *auction_monitor(void *arg);
+
+/**
+ * @brief Broadcast all existing auctions to all peers
+ *
+ * Sends information about all existing auctions to the multicast group
+ * to ensure all peers are synchronized.
+ *
+ * @return The number of auctions broadcasted, or negative value on error
+ */
+int broadcast_all_auctions();
 
 #endif /* AUCTION_H */
