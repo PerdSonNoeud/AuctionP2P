@@ -368,8 +368,10 @@ int handle_join(int sock) {
     }
 
     // Send the response (CODE 4) en unicast vers sender
-    if (send_unicast(send_sock, &sender, resp_buffer, strlen(resp_buffer)) < 0) {
-      perror("send_unicast a échoué");
+    int len = sendto(send_sock, resp_buffer, strlen(resp_buffer), 0,
+                     (struct sockaddr *)&sender, sizeof(sender));
+    if (len < 0) {
+      perror("sendto a échoué");
       free_message(response);
       free_message(request);
       close(send_sock);

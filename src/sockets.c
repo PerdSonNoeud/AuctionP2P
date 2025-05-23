@@ -148,13 +148,6 @@ int setup_unicast_sender(const char *s_addr, int port) {
     return -1;
   }
 
-  // Associer le socket à notre adresse/port
-  if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-    perror("bind a échoué pour le socket unicast");
-    close(sock);
-    return -1;
-  }
-
   printf("  Socket unicast UDP configuré pour la réception sur port %d\n", port);
   return sock;
 }
@@ -228,15 +221,6 @@ int send_multicast(int sock, const char *addr, int port, const void *data, size_
     return -1;
   }
   if (sendto(sock, data, len, 0, (struct sockaddr*)&dest, sizeof(dest)) < 0) {
-    perror("sendto a échoué");
-    return -1;
-  }
-
-  return 0;
-}
-
-int send_unicast(int sock, struct sockaddr_in6 *dest_addr, const void *data, size_t len) {
-  if (sendto(sock, data, len, 0, (struct sockaddr*)dest_addr, sizeof(*dest_addr)) < 0) {
     perror("sendto a échoué");
     return -1;
   }
