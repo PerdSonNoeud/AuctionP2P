@@ -56,11 +56,14 @@ int join_auction() {
     close(send_sock);
     return -1;
   }
+  // Socket to receive unicast
+  int unicast_sock = setup_unicast_receiver(pSystem.my_port);
 
   // Send a request to join the system
   struct message *request = init_message(CODE_DEMANDE_LIAISON); // CODE = 3 for join request
   if (request == NULL) {
     perror("Échec de l'initialisation du message");
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -70,6 +73,7 @@ int join_auction() {
   if (buffer == NULL) {
     perror("malloc a échoué");
     free_message(request);
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -78,6 +82,7 @@ int join_auction() {
     perror("message_to_buffer a échoué");
     free(buffer);
     free_message(request);
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -85,13 +90,12 @@ int join_auction() {
 
   int result = send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, buffer, buffer_size);
   if (result < 0) {
+    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
   }
   printf("  Demande de connexion envoyée... (CODE = 3)\n");
-
-  int unicast_sock = setup_unicast_receiver(pSystem.my_port);
 
   // Set timeout for unicast socket
   struct timeval tv;
@@ -114,21 +118,16 @@ int join_auction() {
   while (attempts < MAX_ATTEMPTS) {
     // Attendre la réponse unicast sur notre socket dédié
     socklen_t sender_len = sizeof(sender);
-    free(buffer);
-    buffer = malloc(1024); // Allocate buffer for incoming messages
-    if (buffer == NULL) {
-      perror("malloc a échoué");
-      free_message(request);
-      close(unicast_sock);
-      close(send_sock);
-      close(recv_sock);
-      return -1;
-    }
+    buffer_size = 1024;
+    char resp_buffer[buffer_size];
+    memset(resp_buffer, 0, buffer_size);
+    // Ajouter des informations de débogage
+
     // Try to receive a message
-    int len = recvfrom(unicast_sock, buffer, strlen(buffer) - 1, 0,
+    int len = recvfrom(unicast_sock, resp_buffer, buffer_size - 1, 0,
                       (struct sockaddr*)&sender, &sender_len);
     if (len > 0) {
-      buffer[len] = '\0'; // S'assurer que la chaîne est terminée
+      resp_buffer[len] = '\0'; // S'assurer que la chaîne est terminée
       printf("  Réponse reçue en unicast (%d octets)\n", len);
 
       struct message *response = malloc(sizeof(struct message));
@@ -141,7 +140,7 @@ int join_auction() {
         close(recv_sock);
         return -1;
       }
-      if (buffer_to_message(response, buffer) < 0) {
+      if (buffer_to_message(response, resp_buffer) < 0) {
         perror("buffer_to_message a échoué");
         free(response);
         free(buffer);
@@ -157,11 +156,11 @@ int join_auction() {
         printf("  Réponse de connexion reçue\n");
         // Get sender's address
         char sender_ip_str[INET6_ADDRSTRLEN];
-        inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
+        inet_ntop(AF_INET6, &response->ip, sender_ip_str, sizeof(sender_ip_str));
         printf("  Pair trouvé: ID=%d, IP=%s, Port=%d\n", response->id, sender_ip_str, response->port);
 
-        unicast_sock = setup_client_socket(sender_ip_str, response->port);
-        if (unicast_sock < 0) {
+        int client_sock = setup_client_socket(sender_ip_str, response->port);
+        if (client_sock < 0) {
           perror("setup_client_socket a échoué");
           free(response);
           free(buffer);
@@ -186,23 +185,24 @@ int join_auction() {
           free_message(response);
           free_message(request);
           close(send_sock);
+          close(client_sock);
           return -1;
         }
 
         // Send the message
-        if (send(unicast_sock, info_buffer, info_buffer_size, 0) <= 0) {
+        if (send(client_sock, info_buffer, info_buffer_size, 0) <= 0) {
           perror("send a échoué (info pair)");
           free_message(info_msg);
           free_message(response);
           free_message(request);
           close(send_sock);
-          close(unicast_sock);
+          close(client_sock);
           return -1;
         }
 
         // Wait for response from sender (CODE = 50 or CODE = 51)
         memset(buffer, 0, buffer_size);
-        len = recv(unicast_sock, buffer, buffer_size - 1, 0);
+        len = recv(client_sock, buffer, buffer_size - 1, 0);
         if (len > 0) {
           buffer[len] = '\0'; // Ensure null-terminated string
           printf("  Réponse reçue de l'expéditeur (%d octets)\n", len);
@@ -213,7 +213,7 @@ int join_auction() {
             free(buffer);
             free_message(info_msg);
             free_message(request);
-            close(unicast_sock);
+            close(client_sock);
             close(send_sock);
             return -1;
           }
@@ -223,7 +223,7 @@ int join_auction() {
             free(buffer);
             free_message(info_msg);
             free_message(request);
-            close(unicast_sock);
+            close(client_sock);
             close(send_sock);
             return -1;
           }
@@ -239,7 +239,7 @@ int join_auction() {
             free(buffer);
             free_message(info_msg);
             free_message(request);
-            close(unicast_sock);
+            close(client_sock);
             close(send_sock);
             close(recv_sock);
             return -1;
@@ -251,7 +251,7 @@ int join_auction() {
           free(buffer);
           free_message(info_msg);
           free_message(request);
-          close(unicast_sock);
+          close(client_sock);
           close(send_sock);
           close(recv_sock);
           return -1;
@@ -302,6 +302,7 @@ int join_auction() {
 }
 
 int handle_join(int sock) {
+  // Sender address
   struct sockaddr_in6 sender;
   char buffer[1024]; // Static buffer with fixed size
   memset(buffer, 0, sizeof(buffer));
@@ -325,14 +326,11 @@ int handle_join(int sock) {
 
   // Check message code
   if (request->code == CODE_DEMANDE_LIAISON) { // CODE = 3 for connection request
-    printf("Demande de connexion reçue\n");
-
     // Obtain sender's IP address
     char sender_ip_str[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
-
     // Display requester info
-    printf("Demande de connexion, IP=%s, Port=%d\n", sender_ip_str, ntohs(sender.sin6_port));
+    printf("\nDemande de connexion, IP=%s, Port=%d\n", sender_ip_str, ntohs(sender.sin6_port));
 
     int send_sock = setup_unicast_sender(sender_ip_str, pSystem.my_port);
     if (send_sock < 0) {
@@ -352,7 +350,7 @@ int handle_join(int sock) {
 
     response->id = pSystem.my_id;
     // Ignore IP received from send/recv
-    // message_set_ip(response, pSystem.my_ip);
+    message_set_ip(response, pSystem.my_ip);
     message_set_port(response, pSystem.my_port);
 
     // Convert the response to buffer
@@ -367,8 +365,7 @@ int handle_join(int sock) {
       close(send_sock);
       return -1;
     }
-    printf("buffer : %s\n", resp_buffer);
-
+    sender.sin6_port = htons(pSystem.my_port);
     // Send the response (CODE 4) en unicast vers sender
     int len = sendto(send_sock, resp_buffer, strlen(resp_buffer), 0,
                      (struct sockaddr *)&sender, sizeof(sender));
@@ -385,14 +382,6 @@ int handle_join(int sock) {
     int unicast_sock = setup_server_socket(pSystem.my_port);
     if (unicast_sock < 0) {
       perror("setup_server_socket a échoué");
-      free_message(response);
-      free_message(request);
-      close(send_sock);
-      return -1;
-    }
-    // Accept the connection
-    if (listen(unicast_sock, 0) < 0) {
-      perror("listen a échoué");
       free_message(response);
       free_message(request);
       close(send_sock);

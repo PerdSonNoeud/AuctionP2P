@@ -120,7 +120,7 @@ int setup_unicast_receiver(int port) {
     return -1;
   }
 
-  printf("  Socket unicast UDP configuré pour la réception sur port %d\n", port);
+  printf("  Socket unicast configuré pour la réception sur port %d\n", port);
   return sock;
 }
 
@@ -148,7 +148,7 @@ int setup_unicast_sender(const char *s_addr, int port) {
     return -1;
   }
 
-  printf("  Socket unicast UDP configuré pour la réception sur port %d\n", port);
+  printf("  Socket unicast UDP configuré pour l'envoie ADDR: %s  IP: %d\n", s_addr, port);
   return sock;
 }
 
@@ -166,12 +166,6 @@ int setup_server_socket(int port) {
   addr.sin6_addr = in6addr_any;
   addr.sin6_port = htons(port);
 
-  // Options pour réutiliser l'adresse/port
-  if (setup_sock_opt(sock) < 0) {
-    close(sock);
-    return -1;
-  }
-
   // Associer le socket à notre adresse/port
   if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
     perror("bind a échoué pour le socket unicast");
@@ -179,7 +173,13 @@ int setup_server_socket(int port) {
     return -1;
   }
 
-  printf("  Socket unicast TCP configuré pour la réception sur port %d\n", port);
+  if (listen(sock, 5) < 0) {
+    perror("listen a échoué");
+    close(sock);
+    return -1;
+  }
+
+  printf("  Socket serveur TCP configuré pour la réception sur port %d\n", port);
   return sock;
 }
 
@@ -215,7 +215,6 @@ int send_multicast(int sock, const char *addr, int port, const void *data, size_
   memset(&dest, 0, sizeof(dest));
   dest.sin6_family = AF_INET6;
   dest.sin6_port = htons(port);
-
   if (inet_pton(AF_INET6, addr, &dest.sin6_addr) <= 0) {
     perror("inet_pton a échoué");
     return -1;

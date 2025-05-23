@@ -3,14 +3,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 int nbDigits (int n) {
-  if (n < 10) return 1;
-  if (n < 100) return 2;
-  if (n < 1000) return 3;
-  if (n < 10000) return 4;
-  if (n < 100000) return 5;
-  return 0;
+  if (n == 0) return 1;
+  int count = 0;
+  while (n != 0) {
+    n /= 10;
+    count++;
+  }
+  return count;
 }
 
 int get_buffer_size(struct message *msg) {
@@ -22,15 +24,25 @@ int get_buffer_size(struct message *msg) {
   int size = 0;
   // Calculate the size of the resulting buffer
   size += nbDigits(msg->code); // For CODE (max 3 digits)
-  size += nbDigits(msg->id) + sizeof(char); // For ID (max 10 digits) + separator
-  size += nbDigits(msg->lmess) + sizeof(char); // For LMESS (max 5 digits) + separator
-  size += msg->lmess + sizeof(char); // For MESS + separator
-  size += nbDigits(msg->lsig) + sizeof(char); // For LSIG (max 5 digits) + separator
-
-  if (msg->lsig > 0) {
-    size += msg->lsig + sizeof(char); // For SIG + separator
+  if (msg->code != CODE_DEMANDE_LIAISON && msg->code != CODE_ID_ACCEPTED) {
+    size += nbDigits(msg->id) + sizeof(char); // For ID (max 10 digits) + separator
   }
-  // size += sizeof(uint8_t) + sizeof(char); // For NB (max 5 digits) + separator
+
+  if (msg->code == CODE_VALIDATION || msg->code == CODE_CONSENSUS) {
+    size += nbDigits(msg->lmess) + sizeof(char); // For LMESS (max 5 digits) + separator
+    size += msg->lmess + sizeof(char); // For MESS + separator
+    size += nbDigits(msg->lsig) + sizeof(char); // For LSIG (max 5 digits) + separator
+    if (msg->lsig > 0) {
+      size += msg->lsig + sizeof(char); // For SIG + separator
+    }
+  }
+
+  if (msg->code == CODE_REPONSE_LIAISON || msg->code == CODE_INFO_PAIR ||
+      msg->code == CODE_INFO_PAIR_BROADCAST || msg->code == CODE_INFO_SYSTEME) {
+    // For IP address (16 bytes for IPv6) + separator
+    size += sizeof(struct in6_addr) + sizeof(char);
+    size += nbDigits(msg->port) + sizeof(char); // For PORT (max 5 digits) + separator
+  }
 
   // Allocate memory for the buffer
   size += 1; // +1 for ending null character
@@ -64,6 +76,10 @@ int message_to_buffer(struct message *msg, char *buffer, int buffer_size) {
 
   if (msg->code == CODE_REPONSE_LIAISON || msg->code == CODE_INFO_PAIR ||
       msg->code == CODE_INFO_PAIR_BROADCAST || msg->code == CODE_INFO_SYSTEME) {
+    // Offset for IP address
+    char ip_str[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &msg->ip, ip_str, sizeof(ip_str));
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%s", ip_str);
     // Offset for PORT
     offset += snprintf(buffer + offset, buffer_size - offset, "|%d", msg->port);
   }
@@ -180,6 +196,22 @@ int buffer_to_message(struct message *msg, char *buffer) {
 
   if (msg->code == CODE_REPONSE_LIAISON || msg->code == CODE_INFO_PAIR ||
       msg->code == CODE_INFO_PAIR_BROADCAST || msg->code == CODE_INFO_SYSTEME) {
+    // Extract IP address
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
+    if (token == NULL) {
+      perror("Error: invalid buffer format (missing IP)");
+      free(buffer_copy);
+      if (msg->mess) free(msg->mess);
+      if (msg->sig) free(msg->sig);
+      return -1;
+    }
+    if (inet_pton(AF_INET6, token, &msg->ip) <= 0) {
+      perror("Error: invalid IP address format");
+      free(buffer_copy);
+      if (msg->mess) free(msg->mess);
+      if (msg->sig) free(msg->sig);
+      return -1;
+    }
     // Extract PORT
     token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {

@@ -16,13 +16,7 @@ extern struct PairSystem pSystem;  // Declare pSystem as external
 
 // Function to create a new P2P network
 int create_network() {
-    printf("\n  Création d'un nouveau réseau P2P...\n");
-
-    // Initialize the peer system if not already done
-    if (init_pairs() < 0) {
-        fprintf(stderr, "  Échec de l'initialisation du système de pairs\n");
-        return -1;
-    }
+    printf("\nCréation d'un nouveau réseau P2P...\n");
 
     // Configure multicast receiver socket
     recv_sock = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
@@ -55,12 +49,6 @@ int create_network() {
 // Function to join an existing P2P network
 int join_network() {
     printf("  Tentative de connexion à un réseau P2P existant...\n");
-
-    // Initialize the peer system if not already done
-    if (init_pairs() < 0) {
-        fprintf(stderr, "  Échec de l'initialisation du système de pairs\n");
-        return -1;
-    }
 
     // Customize ID (optional)
     printf("  Entrez votre ID souhaité (laissez vide pour défaut %d): ", pSystem.my_id);
@@ -117,6 +105,13 @@ int join_network() {
 int main() {
   printf("===== Bienvenue dans le système P2P =====\n\n");
   printf("Recherche de système P2P existant...\n");
+
+  // Initialize the peer system
+  if (init_pairs() < 0) {
+    fprintf(stderr, "  Échec de l'initialisation du système de pairs\n");
+    return -1;
+  }
+
   int ret = join_network();
   if (ret == 1) {
     ret = create_network();
