@@ -124,7 +124,7 @@ int setup_unicast_receiver(int port) {
   return sock;
 }
 
-int setup_unicast_sender(const char s_addr, int port) {
+int setup_unicast_sender(const char *s_addr, int port) {
   // Socket pour envoyer les réponses unicast
   int sock = socket(AF_INET6, SOCK_DGRAM, 0);
   if (sock < 0) {

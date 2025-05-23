@@ -46,7 +46,7 @@ int setup_unicast_receiver(int port);
  * @param port Port number to bind to
  * @return Socket file descriptor on success, negative value on error
  */
-int setup_unicast_sender(const char s_addr, int port);
+int setup_unicast_sender(const char *s_addr, int port);
 
 /**
  * @brief Set up a unicast TCP socket
