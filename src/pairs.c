@@ -57,13 +57,10 @@ int join_auction() {
     return -1;
   }
 
-  int unicast_sock = setup_unicast_sender(pSystem.my_port);
-
   // Send a request to join the system
   struct message *request = init_message(CODE_DEMANDE_LIAISON); // CODE = 3 for join request
   if (request == NULL) {
     perror("Échec de l'initialisation du message");
-    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -73,7 +70,6 @@ int join_auction() {
   if (buffer == NULL) {
     perror("malloc a échoué");
     free_message(request);
-    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -82,7 +78,6 @@ int join_auction() {
     perror("message_to_buffer a échoué");
     free(buffer);
     free_message(request);
-    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
@@ -90,12 +85,13 @@ int join_auction() {
 
   int result = send_multicast(send_sock, pSystem.liaison_addr, pSystem.liaison_port, buffer, buffer_size);
   if (result < 0) {
-    close(unicast_sock);
     close(send_sock);
     close(recv_sock);
     return -1;
   }
   printf("  Demande de connexion envoyée... (CODE = 3)\n");
+
+  int unicast_sock = setup_unicast_sender(pSystem.my_port);
 
   // Set timeout for unicast socket
   struct timeval tv;
@@ -128,7 +124,7 @@ int join_auction() {
       close(recv_sock);
       return -1;
     }
-
+    // Try to receive a message
     int len = recvfrom(unicast_sock, buffer, strlen(buffer) - 1, 0,
                       (struct sockaddr*)&sender, &sender_len);
 
