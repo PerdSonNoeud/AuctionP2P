@@ -356,21 +356,23 @@ int handle_join(int sock) {
     message_set_port(response, pSystem.my_port);
 
     // Convert the response to buffer
-    char resp_buffer[1024];
-    memset(resp_buffer, 0, sizeof(resp_buffer));
+    int resp_buffer_size = get_buffer_size(response);
+    char resp_buffer[resp_buffer_size];
+    memset(resp_buffer, 0, resp_buffer_size);
 
-    if (message_to_buffer(response, resp_buffer, sizeof(resp_buffer)) < 0) {
+    if (message_to_buffer(response, resp_buffer, resp_buffer_size) < 0) {
       perror("message_to_buffer a échoué");
       free_message(response);
       free_message(request);
       close(send_sock);
       return -1;
     }
+    printf("buffer : %s\n", resp_buffer);
 
     // Send the response (CODE 4) en unicast vers sender
     int len = sendto(send_sock, resp_buffer, strlen(resp_buffer), 0,
                      (struct sockaddr *)&sender, sizeof(sender));
-    if (len < 0) {
+    if (len <= 0) {
       perror("sendto a échoué");
       free_message(response);
       free_message(request);
