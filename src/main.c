@@ -264,7 +264,6 @@ void make_bid()
     printf("\nEnchères actives:\n");
     int active_auctions = 0;
 
-    pthread_mutex_lock(&auction_mutex);
     for (int i = 0; i < auctionSys.count; i++)
     {
         struct Auction *auction = &auctionSys.auctions[i];

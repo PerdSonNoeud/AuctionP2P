@@ -116,6 +116,7 @@ struct Auction *find_auction(unsigned int auction_id)
 
 unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
 {
+  pthread_mutex_lock(&auction_mutex);
 
   printf("Initialisation d'une nouvelle enchère...\n");
 
@@ -323,9 +324,10 @@ int handle_bid(struct message *msg)
       printf("Offre rejetée (superviseur): prix (%u) inférieur ou égal au prix actuel (%u)\n",
              msg->prix, auction->current_price);
 
+        
+      pthread_mutex_unlock(&auction_mutex);
       send_rejection_message(msg);
 
-      pthread_mutex_unlock(&auction_mutex);
       return -1;
     }
 
@@ -337,6 +339,12 @@ int handle_bid(struct message *msg)
     printf("Prix de l'enchère %u mis à jour: %u (offrant: %d)\n",
            auction->auction_id, auction->current_price, auction->id_dernier_prop);
 
+    unsigned int auction_id = auction->auction_id;
+    unsigned int prix = msg->prix;
+    unsigned short id = msg->id;
+
+    pthread_mutex_unlock(&auction_mutex);
+
     // Relayer l'enchère (CODE_ENCHERE_SUPERVISEUR = 10)
     int send_sock = setup_multicast_sender();
     if (send_sock >= 0)
@@ -344,9 +352,9 @@ int handle_bid(struct message *msg)
       struct message *relay_msg = init_message(CODE_ENCHERE_SUPERVISEUR);
       if (relay_msg)
       {
-        relay_msg->id = msg->id;
-        relay_msg->numv = msg->numv;
-        relay_msg->prix = msg->prix;
+        relay_msg->id = id;
+        relay_msg->numv = auction_id;
+        relay_msg->prix = prix;
 
         int buffer_size = get_buffer_size(relay_msg);
         char *buffer = malloc(buffer_size);
