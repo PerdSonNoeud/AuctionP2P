@@ -128,25 +128,52 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
     return 0;
   }
 
-  // Vérifier si nous avons besoin d'augmenter la capacité
-  if (auctionSys.count >= auctionSys.capacity)
+  // Chercher un slot libre (enchère terminée) avant d'en créer un nouveau
+  int free_slot = -1;
+  for (int i = 0; i < auctionSys.count; i++)
   {
-    size_t new_capacity = auctionSys.capacity * 2;
-    struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
-
-    if (!new_auctions)
+    if (is_auction_finished(auctionSys.auctions[i].auction_id))
     {
-      perror("Échec de la réallocation du tableau d'enchères");
-      pthread_mutex_unlock(&auction_mutex);
-      return 0;
+      free_slot = i;
+      printf("Réutilisation du slot %d pour une nouvelle enchère\n", i);
+      break;
+    }
+  }
+
+  struct Auction *new_auction;
+  
+  if (free_slot >= 0)
+  {
+    // Réutiliser un slot existant
+    new_auction = &auctionSys.auctions[free_slot];
+    memset(new_auction, 0, sizeof(struct Auction));
+  }
+  else
+  {
+    // Vérifier si nous avons besoin d'augmenter la capacité
+    if (auctionSys.count >= auctionSys.capacity)
+    {
+      size_t new_capacity = auctionSys.capacity * 2;
+      struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
+
+      if (!new_auctions)
+      {
+        perror("realloc a échoué");
+        pthread_mutex_unlock(&auction_mutex);
+        return 0;
+      }
+
+      auctionSys.auctions = new_auctions;
+      auctionSys.capacity = new_capacity;
+
+      // Initialiser les nouveaux éléments à zéro
+      memset(&auctionSys.auctions[auctionSys.count], 0,
+             (new_capacity - auctionSys.count) * sizeof(struct Auction));
     }
 
-    auctionSys.auctions = new_auctions;
-    auctionSys.capacity = new_capacity;
-
-    // Initialiser les nouveaux éléments à zéro
-    memset(&auctionSys.auctions[auctionSys.count], 0,
-           (new_capacity - auctionSys.count) * sizeof(struct Auction));
+    // Ajouter la nouvelle enchère à la fin du tableau
+    new_auction = &auctionSys.auctions[auctionSys.count];
+    auctionSys.count++;
   }
 
   printf("Capacité actuelle: %d, Nombre d'enchères: %d\n",
@@ -155,9 +182,6 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
   // Générer un nouvel ID d'enchère
   unsigned int auction_id = generate_auction_id();
 
-  // Ajouter la nouvelle enchère à la fin du tableau
-  struct Auction *new_auction = &auctionSys.auctions[auctionSys.count];
-
   new_auction->auction_id = auction_id;
   new_auction->creator_id = creator->id;
   new_auction->initial_price = initial_price;
@@ -165,9 +189,6 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
   new_auction->id_dernier_prop = creator->id;
   new_auction->start_time = time(NULL);
   new_auction->last_bid_time = time(NULL);
-
-  // Incrémenter le compteur d'enchères APRÈS avoir initialisé tous les champs
-  auctionSys.count++;
 
   printf("Enchère %u créée avec succès (count=%d, capacity=%d)\n",
          auction_id, auctionSys.count, auctionSys.capacity);
@@ -191,7 +212,6 @@ void start_auction(unsigned int auction_id)
   auction->start_time = time(NULL);
   auction->last_bid_time = time(NULL);
 
-  // Débloquer le mutex pendant la préparation du réseau
   pthread_mutex_unlock(&auction_mutex);
 
   // Prépare et envoie le message CODE_NOUVELLE_VENTE (CODE=8)
@@ -234,7 +254,7 @@ void start_auction(unsigned int auction_id)
     return;
   }
 
-  memset(buffer, 0, buffer_size); // Initialiser le buffer à zéro
+  memset(buffer, 0, buffer_size);
 
   if (message_to_buffer(msg, buffer, buffer_size) < 0)
   {
@@ -245,17 +265,17 @@ void start_auction(unsigned int auction_id)
     return;
   }
 
-  // Envoyer plusieurs fois le message au groupe multicast des enchères pour augmenter les chances de réception
+  // Envoyer plusieurs fois le message au groupe multicast des enchères
   printf("Diffusion de la nouvelle enchère %u (prix initial %u) à tous les pairs...\n",
          auction_id, auction->initial_price);
 
   for (int i = 0; i < 2; i++)
-  { // Réduire à 2 envois au lieu de 5
+  {
     if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0)
     {
       perror("Échec de l'envoi de l'annonce de nouvelle vente");
     }
-    usleep(200000); // Augmenter légèrement l'intervalle à 200ms
+    usleep(200000);
   }
 
   printf("Nouvelle vente %u lancée avec prix initial %u\n", auction_id, auction->initial_price);
@@ -265,7 +285,6 @@ void start_auction(unsigned int auction_id)
   free_message(msg);
   close(send_sock);
 
-  // Démarrer le thread de surveillance si nécessaire
   if (!monitor_running)
   {
     monitor_running = 1;
@@ -395,7 +414,6 @@ int handle_bid(struct message *msg)
     }
   }
 
-  pthread_mutex_unlock(&auction_mutex);
   return 0;
 }
 
@@ -665,7 +683,13 @@ int is_auction_finished(unsigned int auction_id)
   struct Auction *auction = find_auction(auction_id);
   if (!auction)
   {
-    return -1; // L'enchère n'existe pas
+    return 1; // Si l'enchère n'existe pas, elle est considérée comme terminée
+  }
+
+  // Si l'enchère a été explicitement marquée comme terminée
+  if (auction->auction_id == 0 || auction->last_bid_time == 0)
+  {
+    return 1;
   }
 
   time_t now = time(NULL);
@@ -673,7 +697,7 @@ int is_auction_finished(unsigned int auction_id)
   // Si aucune enchère depuis AUCTION_TIMEOUT secondes, l'enchère est terminée
   if (difftime(now, auction->last_bid_time) > AUCTION_TIMEOUT)
   {
-    return 1; // Enchère terminée
+    return 1;
   }
 
   return 0; // Enchère en cours
@@ -768,35 +792,46 @@ void *auction_monitor(void *arg)
   while (monitor_running)
   {
     pthread_mutex_lock(&auction_mutex);
-    time_t now = time(NULL);
-
+    
     for (int i = 0; i < auctionSys.count; i++)
     {
       struct Auction *auction = &auctionSys.auctions[i];
-
-      // Vérifier que nous sommes le superviseur
+      
+      // Ignorer les enchères déjà terminées
+      if (auction->last_bid_time == 0 || auction->auction_id == 0)
+      {
+        continue;
+      }
+      
       unsigned short supervisor_id = (auction->auction_id >> 16) & 0xFFFF;
+      
+      // Seul le superviseur gère les timeouts
       if (supervisor_id == pSystem.my_id)
       {
-        double elapsed = difftime(now, auction->last_bid_time);
-
-        // Premier avertissement après AUCTION_TIMEOUT
-        if (elapsed >= AUCTION_TIMEOUT && elapsed < AUCTION_TIMEOUT + 1)
+        time_t now = time(NULL);
+        double time_since_last_bid = difftime(now, auction->last_bid_time);
+        
+        if (time_since_last_bid > AUCTION_TIMEOUT)
         {
-          send_end_warning(auction->auction_id);
-        }
-        // Finalisation après 2*AUCTION_TIMEOUT (30s)
-        else if (elapsed >= 2 * AUCTION_TIMEOUT)
-        {
-          finalize_auction(auction->auction_id);
-          mark_auction_finished(auction->auction_id);
+          printf("Timeout détecté pour l'enchère %u (%.0fs depuis dernière offre)\n", 
+                 auction->auction_id, time_since_last_bid);
+          
+          // Finaliser l'enchère
+          unsigned int auction_id = auction->auction_id;
+          pthread_mutex_unlock(&auction_mutex);
+          
+          finalize_auction(auction_id);
+          mark_auction_finished(auction_id);
+          
+          pthread_mutex_lock(&auction_mutex);
         }
       }
     }
-
+    
     pthread_mutex_unlock(&auction_mutex);
-    sleep(5);
+    sleep(2); // Vérifier toutes les 2 secondes
   }
+  
   return NULL;
 }
 
@@ -808,16 +843,13 @@ void mark_auction_finished(unsigned int auction_id)
   struct Auction *auction = find_auction(auction_id);
   if (!auction)
   {
-    fprintf(stderr, "Erreur: Enchère %u introuvable pour marquage comme terminée\n", auction_id);
     pthread_mutex_unlock(&auction_mutex);
     return;
   }
 
-  // Marquer l'enchère comme terminée en réinitialisant ses champs
-  auction->current_price = 0;
-  auction->id_dernier_prop = 0;
-  auction->last_bid_time = 0;
-
+  // Marquer l'enchère comme terminée en réinitialisant ses champs temporels
+  auction->last_bid_time = 0;  // Marqueur principal de fin
+  
   printf("Enchère %u marquée comme terminée\n", auction_id);
 
   pthread_mutex_unlock(&auction_mutex);
