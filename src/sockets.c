@@ -166,6 +166,12 @@ int setup_server_socket(int port) {
   addr.sin6_addr = in6addr_any;
   addr.sin6_port = htons(port);
 
+  // Options pour réutiliser l'adresse/port
+  if (setup_sock_opt(sock) < 0) {
+    close(sock);
+    return -1;
+  }
+
   // Associer le socket à notre adresse/port
   if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
     perror("bind a échoué pour le socket unicast");
@@ -203,6 +209,12 @@ int setup_client_socket(const char *addr, int port) {
 
   if (inet_pton(AF_INET6, addr_copy, &s_addr.sin6_addr) <= 0) {
     perror("inet_pton a échoué");
+    close(sock);
+    return -1;
+  }
+
+  // Options pour réutiliser l'adresse/port
+  if (setup_sock_opt(sock) < 0) {
     close(sock);
     return -1;
   }
