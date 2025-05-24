@@ -307,6 +307,14 @@ int handle_bid(struct message *msg) {
       return -1;
     }
 
+    // Mettre à jour les données de l'enchère
+    auction->current_price = msg->prix;
+    auction->id_dernier_prop = msg->id;
+    auction->last_bid_time = time(NULL);
+    
+    printf("Prix de l'enchère %u mis à jour: %u (offrant: %d)\n", 
+           auction->auction_id, auction->current_price, auction->id_dernier_prop);
+
     // Relayer l'enchère (CODE_ENCHERE_SUPERVISEUR = 10)
     int send_sock = setup_multicast_sender();
     if (send_sock >= 0) {
@@ -326,23 +334,28 @@ int handle_bid(struct message *msg) {
           free(buffer);
         }
         free_message(relay_msg);
-        
-        // Mettre à jour les données de l'enchère
-        auction->current_price = msg->prix;
-        auction->id_dernier_prop = msg->id;
-        auction->last_bid_time = time(NULL);
       }
       close(send_sock);
     }
   } else {
-    // Si nous ne sommes pas le superviseur, nous vérifions seulement que le prix est supérieur
-    // pour information utilisateur, mais nous ne faisons rien d'autre
-    if (msg->prix <= auction->current_price) {
-      printf("Offre reçue (non-superviseur): prix (%u) inférieur ou égal au prix actuel (%u)\n",
-              msg->prix, auction->current_price);
+    // Si nous ne sommes pas le superviseur, mettons quand même à jour l'enchère locale
+    // si l'offre vient de nous-mêmes
+    if (msg->id == pSystem.my_id && msg->prix > auction->current_price) {
+      printf("Mise à jour locale de l'enchère %u: prix = %u (offrant: nous)\n", 
+             auction->auction_id, msg->prix);
+      auction->current_price = msg->prix;
+      auction->id_dernier_prop = msg->id;
+      auction->last_bid_time = time(NULL);
     } else {
-      printf("Offre reçue (non-superviseur): prix (%u) supérieur au prix actuel (%u) - en attente du superviseur\n",
-              msg->prix, auction->current_price);
+      // Si nous ne sommes pas le superviseur, nous vérifions seulement que le prix est supérieur
+      // pour information utilisateur, mais nous ne faisons rien d'autre
+      if (msg->prix <= auction->current_price) {
+        printf("Offre reçue (non-superviseur): prix (%u) inférieur ou égal au prix actuel (%u)\n",
+                msg->prix, auction->current_price);
+      } else {
+        printf("Offre reçue (non-superviseur): prix (%u) supérieur au prix actuel (%u) - en attente du superviseur\n",
+                msg->prix, auction->current_price);
+      }
     }
   }
   
@@ -364,26 +377,38 @@ int handle_supervisor_bid(struct message *msg) {
     printf("Réception d'une enchère pour une vente inconnue (ID=%u). Création de l'enchère.\n", msg->numv);
     
     if (auctionSys.count >= auctionSys.capacity) {
-      auctionSys.capacity *= 2;
-      auctionSys.auctions = realloc(auctionSys.auctions, auctionSys.capacity * sizeof(struct Auction));
-      if (!auctionSys.auctions) {
+      size_t new_capacity = auctionSys.capacity * 2;
+      struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
+      
+      if (!new_auctions) {
         perror("Échec de la réallocation du tableau d'enchères");
         pthread_mutex_unlock(&auction_mutex);
         return -1;
       }
+      
+      auctionSys.auctions = new_auctions;
+      auctionSys.capacity = new_capacity;
+      
+      // Initialiser les nouveaux éléments à zéro
+      memset(&auctionSys.auctions[auctionSys.count], 0, 
+             (new_capacity - auctionSys.count) * sizeof(struct Auction));
     }
     
-    struct Auction *new_auction = &auctionSys.auctions[auctionSys.count++];
+    struct Auction *new_auction = &auctionSys.auctions[auctionSys.count];
+    memset(new_auction, 0, sizeof(struct Auction));
+    
     new_auction->auction_id = msg->numv;
-    new_auction->creator_id = (msg->numv >> 16) & 0xFFFF; // Extraction de l'ID du créateur
+    new_auction->creator_id = (msg->numv >> 16) & 0xFFFF; // Extraction de l'ID du créateur (ancienne méthode)
     new_auction->initial_price = msg->prix;
     new_auction->current_price = msg->prix;
     new_auction->id_dernier_prop = msg->id;
     new_auction->start_time = time(NULL);
     new_auction->last_bid_time = time(NULL);
     
-    printf("Nouvelle enchère ajoutée au système - ID: %u, Prix: %u, Créateur: %d\n", 
-           new_auction->auction_id, new_auction->current_price, new_auction->creator_id);
+    auctionSys.count++;
+    
+    printf("Nouvelle enchère ajoutée au système - ID: %u, Prix: %u, Créateur: %d, Dernier proposant: %d\n", 
+           new_auction->auction_id, new_auction->current_price, new_auction->creator_id, new_auction->id_dernier_prop);
     
     pthread_mutex_unlock(&auction_mutex);
     return 0;
@@ -398,12 +423,15 @@ int handle_supervisor_bid(struct message *msg) {
   }
   
   // Mettre à jour les données de l'enchère
-  printf("Mise à jour de l'enchère %u: nouveau prix = %u, nouveau proposant = %d\n", 
-         auction->auction_id, msg->prix, msg->id);
+  unsigned int ancien_prix = auction->current_price;
+  unsigned short ancien_proposant = auction->id_dernier_prop;
   
   auction->current_price = msg->prix;
   auction->id_dernier_prop = msg->id;
   auction->last_bid_time = time(NULL);
+  
+  printf("Mise à jour de l'enchère %u: prix %u → %u, proposant %d → %d\n", 
+         auction->auction_id, ancien_prix, msg->prix, ancien_proposant, msg->id);
   
   pthread_mutex_unlock(&auction_mutex);
   return 0;

@@ -5,6 +5,7 @@
 #include <sys/select.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <pthread.h>
 #include "include/auction.h"
 #include "include/multicast.h"
 #include "include/message.h"
@@ -17,6 +18,7 @@ int send_sock = -1;
 int auction_recv_sock = -1;  // Socket pour recevoir les messages d'enchère
 extern struct PairSystem pSystem;  // Declare pSystem as external
 extern struct AuctionSystem auctionSys;  // Declare auctionSys as external
+extern pthread_mutex_t auction_mutex;  // Declare auction_mutex as external
 
 // Déclaration des fonctions
 void sync_auctions();
@@ -297,6 +299,18 @@ void make_bid() {
         perror("Échec de l'envoi de l'enchère");
     } else {
         printf("Enchère envoyée: %u sur l'enchère %u\n", price, auction_id);
+        
+        // Simuler localement la mise à jour du prix pour affichage immédiat
+        pthread_mutex_lock(&auction_mutex);
+        auction->current_price = price;
+        auction->id_dernier_prop = pSystem.my_id;
+        auction->last_bid_time = time(NULL);
+        
+        printf("Prix local mis à jour, en attente de confirmation du superviseur...\n");
+        pthread_mutex_unlock(&auction_mutex);
+        
+        // Afficher les informations mises à jour
+        display_auctions();
     }
     
     free(buffer);
