@@ -202,4 +202,13 @@ int broadcast_all_auctions();
  */
 void mark_auction_finished(unsigned int auction_id);
 
+
+/**
+ * @brief send a rejection message
+ * 
+ * This function sends a rejection message (CODE=15) to the multicast group
+ * when a bid is not accepted. It includes the auction ID and the proposed price.
+ */
+void send_rejection_message(struct message *msg);
+
 #endif /* AUCTION_H */
