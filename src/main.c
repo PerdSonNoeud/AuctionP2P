@@ -54,6 +54,12 @@ int join_network() {
   return 0;
 }
 
+/**
+ * @brief Receive auction information from peers
+ *
+ * This function waits for auction messages from peers for a limited time
+ * and processes them to synchronize the local auction state.
+ */
 void recv_auction_info() {
   // Attendre explicitement les messages d'enchères pendant quelques secondes
   printf("Attente des informations d'enchères en cours...\n");
@@ -87,7 +93,11 @@ void recv_auction_info() {
   printf("Synchronisation terminée.\n");
 }
 
-// Fonction pour synchroniser manuellement les enchères
+/**
+ * @brief Print the current network information
+ *
+ * Displays the current peer ID, address, and port.
+ */
 void sync_auctions() {
   printf("\n=== Synchronisation des enchères ===\n");
   int count = broadcast_all_auctions(m_send);
@@ -97,6 +107,11 @@ void sync_auctions() {
   else printf("Erreur lors de la synchronisation des enchères\n");
 }
 
+/**
+ * @brief Print the current network information
+ *
+ * Displays the current peer ID, address, and port.
+ */
 void print_commands() {
   printf("\nCommandes disponibles :\n  1 - Créer une enchère\n  2 - Faire une offre\n"
          "  3 - Afficher les enchères actives\n  q - Quitter le programme\n> ");
