@@ -86,14 +86,23 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port);
 int send_new_pair(unsigned short id, struct in6_addr ip, unsigned short port);
 
 /**
- * @brief Receive a new peer from the system
+ * @brief Receive information from a peer (TCP)
  *
- * Receives a new peer's information from TCP connections.
+ * Sends the current peer system information to a specified peer.
  *
- * @param client_sock Socket for the client connection
+ * @param sock Socket to use for sending
  * @return 0 on success, negative value on error
  */
-int recv_new_pair(int client_sock);
+int recv_message(int sock);
+
+/**
+ * @brief Quit the peer system
+ *
+ * Disconnects from the peer system and cleans up resources.
+ *
+ * @return 0 on success, negative value on error
+ */
+int quit_pairs();
 
 /**
  * @brief Print the list of connected peers

@@ -723,7 +723,116 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
   return 0;
 }
 
+int recv_message(int sock) {
+  char buffer[UNKNOWN_SIZE];
+  memset(buffer, 0, UNKNOWN_SIZE);
+
+  // Receive a message
+  int len = recv(sock, buffer, UNKNOWN_SIZE - 1, 0);
+  if (len <= 0) {
+    perror("recv a échoué");
+    return -1; // Error or no data received
+  }
+
+  buffer[len] = '\0'; // Ensure null-terminated string
+  printf("Message reçu (%d octets)\n", len);
+
+  struct message *msg = malloc(sizeof(struct message));
+  if (msg == NULL) {
+    perror("malloc a échoué");
+    return -1;
+  }
+
+  if (buffer_to_message(msg, buffer) < 0) {
+    perror("buffer_to_message a échoué");
+    free_message(msg);
+    return -1;
+  }
+
+  // Process the message based on its code
+  if (msg->code == CODE_QUIT_SYSTEME) {
+    printf("  Déconnexion du système P2P demandée par le pair ID=%d\n", msg->id);
+    // Remove the peer from the system
+    for (int i = 0; i < pSystem.count; i++) {
+      if (pSystem.pairs[i].id == msg->id) {
+        pSystem.pairs[i].active = 0; // Mark as inactive
+        printf("  Pair ID=%d déconnecté\n", msg->id);
+        break;
+      }
+    }
+    free_message(msg);
+    return 0; // Indicate that the system should quit
+  } else {
+    printf("  Message reçu avec code inconnu: %d\n", msg->code);
+  }
+
+  free_message(msg);
+  return 0; // Return the length of the received message
+}
+
+int quit_pairs() {
+  printf("Déconnexion du système P2P...\n");
+  // Send a message to all pairs to notify them of disconnection
+  for (int i = 0; i < pSystem.count; i++) {
+    if (!pSystem.pairs[i].active) {
+      continue; // Skip inactive pairs
+    }
+    char peer_ip_str[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &pSystem.pairs[i].ip, peer_ip_str, sizeof(peer_ip_str));
+
+    int sock = setup_client_socket(peer_ip_str, pSystem.pairs[i].port);
+    if (sock < 0) {
+      perror("Échec de la connexion au pair");
+      continue; // Skip to the next peer if connection fails
+    }
+    // Prepare the message to send
+    struct message *msg = init_message(CODE_QUIT_SYSTEME); // CODE = 13 for disconnection
+    if (msg == NULL) {
+      perror("Échec de l'initialisation du message");
+      close(sock);
+      return -1;
+    }
+    msg->id = pSystem.my_id; // Set the ID of the sender
+
+    int buffer_size = get_buffer_size(msg);
+    char *buffer = malloc(buffer_size);
+    if (buffer == NULL) {
+      perror("malloc a échoué");
+      free_message(msg);
+      close(sock);
+      return -1;
+    }
+    if (message_to_buffer(msg, buffer, buffer_size) < 0) {
+      perror("message_to_buffer a échoué");
+      free(buffer);
+      free_message(msg);
+      close(sock);
+      return -1;
+    }
+    // Free the message as we have the buffer now
+    free_message(msg);
+
+    // Send the message
+    if (send(sock, buffer, buffer_size, 0) < 0) {
+      perror("send a échoué");
+      free(buffer);
+      close(sock);
+      return -1;
+    }
+    printf("  Message de déconnexion envoyé au pair %d: ID=%d, IP=%s, Port=%d\n",
+           i + 1, pSystem.pairs[i].id, peer_ip_str, pSystem.pairs[i].port);
+    free(buffer);
+    close(sock);
+  }
+
+  return 0;
+}
+
 void print_pairs() {
+  if (pSystem.count == 0) {
+    printf("  Aucun pair connecté.\n");
+    return;
+  }
   printf("  Pairs connectés:\n");
   for (int i = 0; i < pSystem.count; i++) {
     char ip_str[INET6_ADDRSTRLEN];
