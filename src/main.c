@@ -180,12 +180,9 @@ int main() {
   }
 
   // Configure multicast receiver socket for auctions
-  auc_sock =
-      setup_multicast_receiver(pSystem.auction_addr, pSystem.auction_port);
+  auc_sock = setup_multicast_receiver(pSystem.auction_addr, pSystem.auction_port);
   if (auc_sock < 0) {
-    fprintf(
-        stderr,
-        "Échec de la création du socket récepteur multicast pour enchères\n");
+    fprintf(stderr, "Échec de la création du socket récepteur multicast pour enchères\n");
     close(m_recv);
     close(m_send);
     close(server_sock);
