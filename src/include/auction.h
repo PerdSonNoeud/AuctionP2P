@@ -189,4 +189,17 @@ void *auction_monitor(void *arg);
  */
 int broadcast_all_auctions();
 
+
+/**
+ * @brief mark an auction as finished
+ * 
+ * This function marks an auction as finished by resetting its fields.
+ * It is typically called when the auction has ended or been finalized.
+ * 
+ * @param auction_id The identifier of the auction to mark as finished
+ * 
+ * 
+ */
+void mark_auction_finished(unsigned int auction_id);
+
 #endif /* AUCTION_H */

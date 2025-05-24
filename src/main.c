@@ -208,17 +208,23 @@ int handle_auction_message(int sock)
 // Fonction pour créer une nouvelle enchère
 void create_auction()
 {
-    if (init_auction_system() < 0)
-    {
-        fprintf(stderr, "Échec de l'initialisation du système d'enchères\n");
-        return;
+    if (auctionSys.auctions == NULL) {
+        if (init_auction_system() < 0) {
+            fprintf(stderr, "Échec de l'initialisation du système d'enchères\n");
+            return;
+        }
     }
 
     unsigned int initial_price;
     printf("Entrez le prix initial de l'enchère: ");
-    scanf("%u", &initial_price);
-    while (getchar() != '\n')
-        ; // Vider le buffer d'entrée
+    if (scanf("%u", &initial_price) != 1) {
+        fprintf(stderr, "Erreur de saisie du prix\n");
+        while (getchar() != '\n'); // Vider le buffer
+        return;
+    }
+    while (getchar() != '\n'); // Vider le buffer d'entrée
+
+    printf("Prix initial: %u\n", initial_price);
 
     // Créer une structure pour le créateur
     struct Pair creator;
@@ -226,6 +232,9 @@ void create_auction()
     creator.ip = pSystem.my_ip;
     creator.port = pSystem.my_port;
     creator.active = 1;
+
+    printf("Créateur de l'enchère: ID=%d, IP=%s, PORT=%d\n",
+           creator.id, inet_ntop(AF_INET6, &creator.ip, NULL, 0), creator.port);
 
     // Initialiser et démarrer l'enchère
     unsigned int auction_id = init_auction(&creator, initial_price);

@@ -13,7 +13,7 @@
 struct AuctionSystem auctionSys;
 extern struct PairSystem pSystem;
 
-#define AUCTION_TIMEOUT 60  // 60 secondes pour t3s
+#define AUCTION_TIMEOUT 15  // 60 secondes pour t3s
 #define MIN_VALIDATION_COUNT 3  // Minimum number of validations for consensus
 
 // Compteur pour les ventes initiées par ce pair
@@ -106,7 +106,8 @@ struct Auction* find_auction(unsigned int auction_id) {
 }
 
 unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
-  pthread_mutex_lock(&auction_mutex);
+
+  printf("Initialisation d'une nouvelle enchère...\n");
   
   // Vérifier que creator est valide
   if (!creator) {
@@ -133,6 +134,9 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
     memset(&auctionSys.auctions[auctionSys.count], 0, 
            (new_capacity - auctionSys.count) * sizeof(struct Auction));
   }
+
+  printf("Capacité actuelle: %d, Nombre d'enchères: %d\n", 
+         auctionSys.capacity, auctionSys.count);
 
   // Générer un nouvel ID d'enchère
   unsigned int auction_id = generate_auction_id();
@@ -716,6 +720,7 @@ void *auction_monitor(void *arg) {
         else if (elapsed > 2 * AUCTION_TIMEOUT) {
           // Finaliser la vente
           finalize_auction(auction->auction_id);
+          mark_auction_finished(auction->auction_id);
         }
       }
     }
@@ -727,6 +732,28 @@ void *auction_monitor(void *arg) {
   }
   
   return NULL;
+}
+
+// Fonction pour marquer une enchère comme terminée
+void mark_auction_finished(unsigned int auction_id) {
+  pthread_mutex_lock(&auction_mutex);
+  
+  struct Auction *auction = find_auction(auction_id);
+  if (!auction) {
+    fprintf(stderr, "Erreur: Enchère %u introuvable pour marquage comme terminée\n", auction_id);
+    pthread_mutex_unlock(&auction_mutex);
+    return;
+  }
+
+  
+  // Marquer l'enchère comme terminée en réinitialisant ses champs
+  auction->current_price = 0;
+  auction->id_dernier_prop = 0;
+  auction->last_bid_time = 0;
+  
+  printf("Enchère %u marquée comme terminée\n", auction_id);
+  
+  pthread_mutex_unlock(&auction_mutex);
 }
 
 // Fonction pour créer une enchère avec un ID spécifique (pour la synchronisation)
