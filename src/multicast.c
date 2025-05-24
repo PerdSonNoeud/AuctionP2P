@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <net/if.h>
 #include "include/multicast.h"
+#include <asm-generic/socket.h>
 
 int setup_multicast_opt(int sock) {
   // Allow address reuse
