@@ -44,9 +44,10 @@ int init_pairs();
  * Attempts to join an existing auction network by sending a join request
  * and waiting for a response.
  *
+ * @param m_sender Socket to send multicast messages
  * @return 0 on success, negative value on error
  */
-int join_auction();
+int join_pairs(int m_sender);
 
 /**
  * @brief Handle join requests from other peers
@@ -55,9 +56,10 @@ int join_auction();
  * the peer system accordingly.
  *
  * @param sock Socket to use for communication
+ * @param server_sock Socket for server communication
  * @return 1 if a peer was added, 0 if no peer was added, negative value on error
  */
-int handle_join(int sock);
+int handle_join(int sock, int server_sock);
 
 /**
  * @brief Add a new peer to the system
@@ -70,6 +72,39 @@ int handle_join(int sock);
  * @return 0 on success, negative value on error
  */
 int add_pair(unsigned short id, struct in6_addr ip, unsigned short port);
+
+/**
+ * @brief Send a new peer to the system
+ *
+ * Sends the details of a new peer to the multicast group.
+ *
+ * @param id Peer identifier
+ * @param ip Peer IPv6 address
+ * @param port Peer communication port
+ * @return 0 on success, negative value on error
+ */
+int send_new_pair(unsigned short id, struct in6_addr ip, unsigned short port);
+
+/**
+ * @brief Receive a new peer from the system
+ *
+ * Receives a new peer's information from TCP connections.
+ *
+ * @param client_sock Socket for the client connection
+ * @return 0 on success, negative value on error
+ */
+int recv_new_pair(int client_sock);
+
+/**
+ * @brief print network information
+ *
+ *   Informations du réseau P2P:
+ *     ID local: pSystem.my_id
+ *     Port local: pSystem.my_port
+ *     Nombre de pairs connectés: pSystem.count
+ *     Liste des pairs...
+ */
+void print_network_info();
 
 /**
  * @brief Free resources used by the peer system

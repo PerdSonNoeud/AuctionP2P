@@ -34,6 +34,13 @@
 
 #define SEPARATOR "|"
 
+struct info {
+  uint16_t id;          // Peer ID
+  struct in6_addr ip;   // Peer IP address
+  uint16_t port;        // Peer port number
+  char cle[60];         // Key
+};
+
 /**
  * Message structure for network communication
  * Format: CODE | ID | LMESS | MESS | LSIG | SIG
@@ -50,7 +57,8 @@ struct message {
   char cle[60];         // Key
   uint32_t numv;        // Auction number
   uint32_t prix;        // Price
-  uint16_t nb;          // Number of elements
+  int nb;               // Number of elements
+  struct info *info;    // Array of peer information
 };
 
 /**
@@ -112,6 +120,36 @@ int message_set_ip(struct message* msg, struct in6_addr ip);
 * @return 0 on success, -1 on error
 */
 int message_set_cle(struct message* msg, const char* cle);
+
+/**
+ * @brief Set the auction number in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param numv The auction number to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_nb(struct message *msg, int nb);
+
+/**
+ * @brief Initialize an info structure
+ *
+ * @param info Pointer to the info structure to initialize
+ * @param id Peer ID
+ * @param ip Peer IPv6 address
+ * @param port Peer communication port
+ * @return 0 on success, -1 on error
+ */
+int init_info(struct info *info, int id, struct in6_addr ip, uint16_t port);
+
+/**
+ * @brief Set the info in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param index Index of the info to set
+ * @param info Pointer to the info structure to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_info(struct message *msg, int index, struct info *info);
 
 /**
  * @brief Free the memory allocated for a message structure
