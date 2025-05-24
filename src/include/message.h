@@ -34,6 +34,10 @@
 
 #define SEPARATOR "|"
 
+/**
+ * Structure to hold peer information
+ * Used in the message structure to store peer details
+ */
 struct info {
   uint16_t id;          // Peer ID
   struct in6_addr ip;   // Peer IP address
