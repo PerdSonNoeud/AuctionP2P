@@ -4,6 +4,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <arpa/inet.h>
 #include "include/auction.h"
 #include "include/sockets.h"
 #include "include/message.h"
@@ -13,7 +14,7 @@
 struct AuctionSystem auctionSys;
 extern struct PairSystem pSystem;
 
-#define AUCTION_TIMEOUT 15     // 60 secondes pour t3s
+#define AUCTION_TIMEOUT 60     // 60 secondes pour t3s
 #define MIN_VALIDATION_COUNT 3 // Minimum number of validations for consensus
 
 // Compteur pour les ventes initiées par ce pair
@@ -114,6 +115,125 @@ struct Auction *find_auction(unsigned int auction_id)
   return NULL;
 }
 
+int handle_auction_message(int auc_sock, int m_send) {
+  struct sockaddr_in6 sender;
+  char buffer[UNKNOWN_SIZE];
+  memset(buffer, 0, sizeof(buffer));
+
+  int len = receive_multicast(auc_sock, buffer, sizeof(buffer), &sender);
+  if (len <= 0)
+    return 0; // No data or error
+
+  struct message *msg = malloc(sizeof(struct message));
+  if (msg == NULL) {
+    perror("malloc a échoué");
+    return -1;
+  }
+
+  if (buffer_to_message(msg, buffer) < 0) {
+    perror("buffer_to_message a échoué");
+    free_message(msg);
+    return -1;
+  }
+
+  switch (msg->code) {
+    case CODE_NOUVELLE_VENTE: // Code 8 - New auction
+      printf("Nouvelle vente reçue - ID: %d, NUMV: %u, PRIX: %u\n", msg->id,  msg->numv, msg->prix);
+
+      // Créer une structure pour le créateur
+      struct Pair creator;
+      creator.id = msg->id;
+      creator.ip = sender.sin6_addr;
+      creator.port = ntohs(sender.sin6_port);
+      creator.active = 1;
+
+      // Chercher si cette enchère existe déjà
+      struct Auction *existing = find_auction(msg->numv);
+      if (!existing) {
+        // L'enchère n'existe pas encore, on la crée avec l'ID spécifié
+        printf("Création d'une nouvelle enchère avec ID=%u, prix=%u\n", msg->numv, msg->prix);
+        unsigned int auction_id = init_auction_with_id(&creator, msg->prix, msg->numv);
+
+        if (auction_id == 0) {
+          printf("Erreur: Échec de la création de l'enchère %u\n", msg->numv);
+        } else {
+          printf("Enchère %u ajoutée au système\n", msg->numv);
+          // Vérifier que l'enchère est bien dans le système
+          existing = find_auction(msg->numv);
+          if (existing) {
+            printf("Enchère vérifiée dans le système: ID=%u, prix=%u, créateur=%d\n",
+                   existing->auction_id, existing->current_price,  existing->creator_id);
+          } else {
+            printf("ERREUR: Impossible de trouver l'enchère %u après sa création!\n", msg->numv);
+          }
+        }
+      } else {
+        printf("L'enchère %u existe déjà dans le système (prix=%u, créateur=%d)\n",
+               existing->auction_id, existing->current_price, existing->creator_id);
+      }
+      break;
+
+    case CODE_ENCHERE: // Code 9 - Enchère d'un pair
+      printf("Enchère reçue - ID: %d, NUMV: %u, PRIX: %u\n", msg->id, msg->numv, msg->prix);
+      handle_bid(m_send, msg);
+      break;
+
+    case CODE_ENCHERE_SUPERVISEUR: // Code 10 - Enchère relayée par le superviseur
+      printf("Enchère relayée par le superviseur - ID: %d, NUMV: %u, PRIX: %u\n", msg->id, msg->numv, msg->prix);
+      handle_supervisor_bid(msg);
+      break;
+
+    case CODE_FIN_VENTE_WARNING: // Code 11 - Avertissement de fin de vente
+      printf("Avertissement de fin de vente - ID: %d, NUMV: %u, PRIX: %u\n", msg->id, msg->numv, msg->prix);
+      break;
+
+    case CODE_FIN_VENTE: // Code 12 - Fin de vente
+      printf("Fin de vente - ID gagnant: %d, NUMV: %u, PRIX final: %u\n", msg->id, msg->numv, msg->prix);
+      break;
+  }
+  return 0;
+}
+
+int create_auction(int m_send) {
+  if (auctionSys.auctions == NULL) {
+    if (init_auction_system() < 0) {
+      fprintf(stderr, "Échec de l'initialisation du système d'enchères\n");
+      return -1;
+    }
+  }
+  unsigned int initial_price;
+  printf("Entrez le prix initial de l'enchère: ");
+  if (scanf("%u", &initial_price) != 1) {
+    fprintf(stderr, "Erreur de saisie du prix\n");
+    while (getchar() != '\n'); // Vider le buffer
+    return -1;
+  }
+  while (getchar() != '\n'); // Vider le buffer d'entrée
+
+  printf("Prix initial: %u\n", initial_price);
+
+  // Créer une structure pour le créateur
+  struct Pair creator;
+  creator.id = pSystem.my_id;
+  creator.ip = pSystem.my_ip;
+  creator.port = pSystem.my_port;
+  creator.active = 1;
+
+  printf("Créateur de l'enchère: ID=%d, IP=%s, PORT=%d\n", creator.id,
+         inet_ntop(AF_INET6, &creator.ip, NULL, 0), creator.port);
+
+  // Initialiser et démarrer l'enchère
+  unsigned int auction_id = init_auction(&creator, initial_price);
+  if (auction_id == 0) {
+    fprintf(stderr, "Échec de la création de l'enchère\n");
+    return -1;
+  }
+
+  printf("Enchère %u créée avec succès\n", auction_id);
+
+  return start_auction(m_send, auction_id);
+}
+
 unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
 {
   pthread_mutex_lock(&auction_mutex);
@@ -197,16 +317,14 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
   return auction_id;
 }
 
-void start_auction(unsigned int auction_id)
-{
+int start_auction(int m_send, unsigned int auction_id) {
   pthread_mutex_lock(&auction_mutex);
 
   struct Auction *auction = find_auction(auction_id);
-  if (!auction)
-  {
+  if (!auction) {
     fprintf(stderr, "Erreur: Enchère %u introuvable\n", auction_id);
     pthread_mutex_unlock(&auction_mutex);
-    return;
+    return -1;
   }
 
   auction->start_time = time(NULL);
@@ -214,65 +332,46 @@ void start_auction(unsigned int auction_id)
 
   pthread_mutex_unlock(&auction_mutex);
 
-  // Prépare et envoie le message CODE_NOUVELLE_VENTE (CODE=8)
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-  {
-    perror("Échec de création du socket d'envoi multicast");
-    return;
-  }
-
   struct message *msg = init_message(CODE_NOUVELLE_VENTE);
-  if (!msg)
-  {
+  if (!msg) {
     perror("Échec de l'initialisation du message");
-    close(send_sock);
-    return;
+    return -1;
   }
 
   msg->id = pSystem.my_id;
   msg->numv = auction_id;
   msg->prix = auction->initial_price;
 
-  if (message_set_mess(msg, "Nouvelle enchère") < 0 ||
-      message_set_sig(msg, "") < 0)
-  {
+  if (message_set_mess(msg, "Nouvelle enchère") < 0 || message_set_sig(msg, "") < 0)  {
     perror("Échec de l'initialisation des champs du message");
     free_message(msg);
-    close(send_sock);
-    return;
+    return -1;
   }
 
   // Convertir le message en buffer
   int buffer_size = get_buffer_size(msg);
   char *buffer = malloc(buffer_size);
-  if (!buffer)
-  {
+  if (!buffer) {
     perror("Échec de l'allocation du buffer");
     free_message(msg);
-    close(send_sock);
-    return;
+    return -1;
   }
 
   memset(buffer, 0, buffer_size);
 
-  if (message_to_buffer(msg, buffer, buffer_size) < 0)
-  {
+  if (message_to_buffer(msg, buffer, buffer_size) < 0) {
     perror("Échec de la conversion du message en buffer");
     free(buffer);
     free_message(msg);
-    close(send_sock);
-    return;
+    return -1;
   }
 
   // Envoyer plusieurs fois le message au groupe multicast des enchères
   printf("Diffusion de la nouvelle enchère %u (prix initial %u) à tous les pairs...\n",
          auction_id, auction->initial_price);
 
-  for (int i = 0; i < 2; i++)
-  {
-    if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0)
-    {
+  for (int i = 0; i < 2; i++) {
+    if (send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0) {
       perror("Échec de l'envoi de l'annonce de nouvelle vente");
     }
     usleep(200000);
@@ -283,21 +382,20 @@ void start_auction(unsigned int auction_id)
   // Libérer les ressources
   free(buffer);
   free_message(msg);
-  close(send_sock);
 
-  if (!monitor_running)
-  {
+  if (!monitor_running) {
     monitor_running = 1;
-    if (pthread_create(&auction_monitor_thread, NULL, auction_monitor, NULL) != 0)
-    {
+    int *m_send_ptr = &m_send;
+    if (pthread_create(&auction_monitor_thread, NULL, auction_monitor, m_send_ptr) != 0) {
       perror("Échec de la création du thread de surveillance");
       monitor_running = 0;
     }
   }
+  return 0;
 }
 
 // Fonction pour gérer les messages d'enchère reçus (CODE=9)
-int handle_bid(struct message *msg)
+int handle_bid(int m_send, struct message *msg)
 {
   if (msg->code != CODE_ENCHERE)
   {
@@ -330,17 +428,14 @@ int handle_bid(struct message *msg)
   unsigned short supervisor_id = (auction->auction_id >> 16) & 0xFFFF;
 
   // Si nous sommes le superviseur de cette enchère, nous devons relayer l'enchère
-  if (supervisor_id == pSystem.my_id)
-  {
+  if (supervisor_id == pSystem.my_id) {
     // Vérifie que le prix proposé est supérieur au prix actuel
-    if (msg->prix <= auction->current_price)
-    {
+    if (msg->prix <= auction->current_price) {
       printf("Offre rejetée (superviseur): prix (%u) inférieur ou égal au prix actuel (%u)\n",
              msg->prix, auction->current_price);
 
-        
       pthread_mutex_unlock(&auction_mutex);
-      send_rejection_message(msg);
+      send_rejection_message(m_send, msg);
 
       return -1;
     }
@@ -360,33 +455,24 @@ int handle_bid(struct message *msg)
     pthread_mutex_unlock(&auction_mutex);
 
     // Relayer l'enchère (CODE_ENCHERE_SUPERVISEUR = 10)
-    int send_sock = setup_multicast_sender();
-    if (send_sock >= 0)
-    {
-      struct message *relay_msg = init_message(CODE_ENCHERE_SUPERVISEUR);
-      if (relay_msg)
-      {
-        relay_msg->id = id;
-        relay_msg->numv = auction_id;
-        relay_msg->prix = prix;
+    struct message *relay_msg = init_message(CODE_ENCHERE_SUPERVISEUR);
+    if (relay_msg) {
+      relay_msg->id = id;
+      relay_msg->numv = auction_id;
+      relay_msg->prix = prix;
 
-        int buffer_size = get_buffer_size(relay_msg);
-        char *buffer = malloc(buffer_size);
-        if (buffer)
-        {
-          message_to_buffer(relay_msg, buffer, buffer_size);
-          printf("Relais de l'offre: enchère %u, offrant %d, prix %u\n",
-                 msg->numv, msg->id, msg->prix);
-          send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
-          free(buffer);
-        }
-        free_message(relay_msg);
+      int buffer_size = get_buffer_size(relay_msg);
+      char *buffer = malloc(buffer_size);
+      if (buffer) {
+        message_to_buffer(relay_msg, buffer, buffer_size);
+        printf("Relais de l'offre: enchère %u, offrant %d, prix %u\n",
+               msg->numv, msg->id, msg->prix);
+        send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+        free(buffer);
       }
-      close(send_sock);
+      free_message(relay_msg);
     }
-  }
-  else
-  {
+  } else {
     // Si nous ne sommes pas le superviseur, mettons quand même à jour l'enchère locale
     // si l'offre vient de nous-mêmes
     if (msg->id == pSystem.my_id && msg->prix > auction->current_price)
@@ -418,10 +504,8 @@ int handle_bid(struct message *msg)
 }
 
 // Fonction pour gérer les enchères relayées par le superviseur (CODE=10)
-int handle_supervisor_bid(struct message *msg)
-{
-  if (msg->code != CODE_ENCHERE_SUPERVISEUR)
-  {
+int handle_supervisor_bid(struct message *msg) {
+  if (msg->code != CODE_ENCHERE_SUPERVISEUR) {
     return -1;
   }
 
@@ -498,7 +582,7 @@ int handle_supervisor_bid(struct message *msg)
 }
 
 // Fonction pour envoyer un avertissement de fin de vente (CODE=11)
-int send_end_warning(unsigned int auction_id)
+int send_end_warning(int m_send, unsigned int auction_id)
 {
   pthread_mutex_lock(&auction_mutex);
 
@@ -519,19 +603,10 @@ int send_end_warning(unsigned int auction_id)
   }
 
   // Envoyer le message d'avertissement (CODE_FIN_VENTE_WARNING = 11)
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-  {
-    perror("Échec de création du socket d'envoi multicast");
-    pthread_mutex_unlock(&auction_mutex);
-    return -1;
-  }
-
   struct message *warning_msg = init_message(CODE_FIN_VENTE_WARNING);
   if (!warning_msg)
   {
     perror("Échec de l'initialisation du message");
-    close(send_sock);
     pthread_mutex_unlock(&auction_mutex);
     return -1;
   }
@@ -546,27 +621,25 @@ int send_end_warning(unsigned int auction_id)
   {
     perror("Échec de l'allocation du buffer");
     free_message(warning_msg);
-    close(send_sock);
     pthread_mutex_unlock(&auction_mutex);
     return -1;
   }
 
   message_to_buffer(warning_msg, buffer, buffer_size);
-  send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+  send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
 
   printf("Avertissement de fin de vente pour l'enchère %u envoyé (prix actuel: %u)\n",
          auction_id, auction->current_price);
 
   free(buffer);
   free_message(warning_msg);
-  close(send_sock);
 
   pthread_mutex_unlock(&auction_mutex);
   return 0;
 }
 
 // Fonction pour finaliser une vente (CODE=12)
-int finalize_auction(unsigned int auction_id)
+int finalize_auction(int m_send, unsigned int auction_id)
 {
   pthread_mutex_lock(&auction_mutex);
 
@@ -586,19 +659,10 @@ int finalize_auction(unsigned int auction_id)
   }
 
   // Envoyer le message de fin (CODE_FIN_VENTE = 12)
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-  {
-    perror("Échec de création du socket d'envoi multicast");
-    pthread_mutex_unlock(&auction_mutex);
-    return -1;
-  }
-
   struct message *final_msg = init_message(CODE_FIN_VENTE);
   if (!final_msg)
   {
     perror("Échec de l'initialisation du message");
-    close(send_sock);
     pthread_mutex_unlock(&auction_mutex);
     return -1;
   }
@@ -615,41 +679,29 @@ int finalize_auction(unsigned int auction_id)
   {
     perror("Échec de l'allocation du buffer");
     free_message(final_msg);
-    close(send_sock);
     pthread_mutex_unlock(&auction_mutex);
     return -1;
   }
 
   message_to_buffer(final_msg, buffer, buffer_size);
-  send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+  send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
 
   printf("Fin de la vente pour l'enchère %u: gagnant ID=%u, prix final=%u\n",
          auction_id, final_msg->id, final_msg->prix);
 
   free(buffer);
   free_message(final_msg);
-  close(send_sock);
 
   pthread_mutex_unlock(&auction_mutex);
   return 0;
 }
 
 // Fonction pour quitter le système d'enchères (CODE=13)
-int quit_auction_system()
-{
-  // Envoyer le message de départ (CODE_QUIT_SYSTEME = 13)
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-  {
-    perror("Échec de création du socket d'envoi multicast");
-    return -1;
-  }
-
+int quit_auction_system(int m_send) {
   struct message *quit_msg = init_message(CODE_QUIT_SYSTEME);
   if (!quit_msg)
   {
     perror("Échec de l'initialisation du message");
-    close(send_sock);
     return -1;
   }
 
@@ -661,18 +713,16 @@ int quit_auction_system()
   {
     perror("Échec de l'allocation du buffer");
     free_message(quit_msg);
-    close(send_sock);
     return -1;
   }
 
   message_to_buffer(quit_msg, buffer, buffer_size);
-  send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+  send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
 
   printf("Message de départ envoyé (ID=%u)\n", pSystem.my_id);
 
   free(buffer);
   free_message(quit_msg);
-  close(send_sock);
 
   return 0;
 }
@@ -703,8 +753,115 @@ int is_auction_finished(unsigned int auction_id)
   return 0; // Enchère en cours
 }
 
+int make_bid(int m_send) {
+  unsigned int auction_id;
+  unsigned int price;
+
+  if (auctionSys.auctions == NULL) {
+    fprintf(stderr, "Erreur: Système d'enchères non initialisé\n");
+    return -1;
+  }
+
+  // Afficher les enchères disponibles
+  printf("\nEnchères actives:\n");
+  int active_auctions = 0;
+
+  for (int i = 0; i < auctionSys.count; i++) {
+    struct Auction *auction = &auctionSys.auctions[i];
+    if (!is_auction_finished(auction->auction_id)) {
+      printf("%d. ID: %u, Prix actuel: %u, Créateur: %d\n", active_auctions + 1,
+             auction->auction_id, auction->current_price, auction->creator_id);
+      active_auctions++;
+    }
+  }
+  pthread_mutex_unlock(&auction_mutex);
+
+  if (active_auctions == 0) {
+    return 0; // No active auctions
+  }
+
+  printf("\nEntrez l'ID de l'enchère: ");
+  scanf("%u", &auction_id);
+  while (getchar() != '\n'); // Vider le buffer d'entrée
+
+  // Vérifier que l'enchère existe
+  struct Auction *auction = find_auction(auction_id);
+  if (!auction) {
+    fprintf(stderr, "Erreur: Enchère %u introuvable\n", auction_id);
+    return -1;
+  }
+
+  // Vérifier que l'enchère n'est pas terminée
+  if (is_auction_finished(auction_id)) {
+    fprintf(stderr, "Erreur: L'enchère %u est terminée\n", auction_id);
+    return -1;
+  }
+
+  printf("Prix actuel: %u\n", auction->current_price);
+  printf("Entrez votre prix: ");
+  scanf("%u", &price);
+  while (getchar() != '\n'); // Vider le buffer d'entrée
+
+  // Vérifier que le prix est supérieur au prix actuel
+  if (price <= auction->current_price) {
+    fprintf(stderr, "Erreur: Le prix doit être supérieur au prix actuel\n");
+    return -1;
+  }
+
+  struct message *msg = init_message(CODE_ENCHERE);
+  if (!msg) {
+    perror("Échec de l'initialisation du message");
+    return -1;
+  }
+  msg->id = pSystem.my_id;
+  msg->numv = auction_id;
+  msg->prix = price;
+
+  int buffer_size = get_buffer_size(msg);
+  char *buffer = malloc(buffer_size);
+  if (!buffer) {
+    perror("Échec de l'allocation du buffer");
+    free_message(msg);
+    return -1;
+  }
+
+  if (message_to_buffer(msg, buffer, buffer_size) < 0) {
+    perror("Échec de la conversion du message en buffer");
+    free(buffer);
+    free_message(msg);
+    return -1;
+  }
+
+  if (send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0) {
+    perror("Échec de l'envoi de l'enchère");
+  } else {
+    pthread_mutex_lock(&auction_mutex);
+    if (auction && !is_auction_finished(auction_id)) {
+      // Mise à jour temporaire pour l'affichage
+      unsigned int old_price = auction->current_price;
+
+      auction->current_price = price;
+      auction->id_dernier_prop = pSystem.my_id;
+      auction->last_bid_time = time(NULL);
+
+      printf("Prix local mis à jour de %u à %u, en attente de confirmation...\n", old_price, price);
+
+      // Afficher les informations mises à jour
+      pthread_mutex_unlock(&auction_mutex);
+      display_auctions();
+    } else {
+      pthread_mutex_unlock(&auction_mutex);
+      printf("Attention: L'enchère pourrait être terminée\n");
+    }
+  }
+
+  free(buffer);
+  free_message(msg);
+  return 1;
+}
+
 // Fonction pour valider une enchère
-int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int bid_price)
+int validate_bid(int m_send, unsigned int auction_id, unsigned short bidder_id, unsigned int bid_price)
 {
   struct Auction *auction = find_auction(auction_id);
   if (!auction)
@@ -714,47 +871,31 @@ int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int
   }
 
   // Vérifier que le prix est valide (supérieur au prix actuel)
-  if (bid_price <= auction->current_price)
-  {
+  if (bid_price <= auction->current_price) {
     // Envoyer un message de refus (CODE_REFUS_PRIX = 15)
-    int send_sock = setup_multicast_sender();
-    if (send_sock >= 0)
-    {
-      struct message *refuse_msg = init_message(CODE_REFUS_PRIX);
-      if (refuse_msg)
-      {
-        refuse_msg->id = pSystem.my_id;
-        refuse_msg->numv = auction_id;
-        refuse_msg->prix = bid_price;
+    struct message *refuse_msg = init_message(CODE_REFUS_PRIX);
+    if (refuse_msg) {
+      refuse_msg->id = pSystem.my_id;
+      refuse_msg->numv = auction_id;
+      refuse_msg->prix = bid_price;
 
-        int buffer_size = get_buffer_size(refuse_msg);
-        char *buffer = malloc(buffer_size);
-        if (buffer)
-        {
-          message_to_buffer(refuse_msg, buffer, buffer_size);
-          send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
-          free(buffer);
-        }
-        free_message(refuse_msg);
+      int buffer_size = get_buffer_size(refuse_msg);
+      char *buffer = malloc(buffer_size);
+      if (buffer) {
+        message_to_buffer(refuse_msg, buffer, buffer_size);
+        send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+        free(buffer);
       }
-      close(send_sock);
+      free_message(refuse_msg);
     }
     return -1;
   }
 
   // Envoyer un message de validation (CODE_VALIDATION = 1)
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-  {
-    perror("Échec de création du socket d'envoi multicast");
-    return -1;
-  }
-
   struct message *valid_msg = init_message(CODE_VALIDATION);
   if (!valid_msg)
   {
     perror("Échec de l'initialisation du message");
-    close(send_sock);
     return -1;
   }
 
@@ -766,16 +907,14 @@ int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int
   {
     perror("Échec de l'allocation du buffer");
     free_message(valid_msg);
-    close(send_sock);
     return -1;
   }
 
   message_to_buffer(valid_msg, buffer, buffer_size);
-  send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+  send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
 
   free(buffer);
   free_message(valid_msg);
-  close(send_sock);
 
   // Dans un cas réel, on compterait les validations reçues
   // Pour simuler le consensus, on met à jour directement
@@ -787,7 +926,7 @@ int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int
 }
 
 // Fonction exécutée par le thread de surveillance des enchères
-void *auction_monitor() {
+void *auction_monitor(void *m_send_ptr) {
   while (monitor_running)
   {
     pthread_mutex_lock(&auction_mutex);
@@ -818,8 +957,9 @@ void *auction_monitor() {
           // Finaliser l'enchère
           unsigned int auction_id = auction->auction_id;
           pthread_mutex_unlock(&auction_mutex);
-          
-          finalize_auction(auction_id);
+
+          int m_send = *((int *)m_send_ptr);
+          finalize_auction(m_send, auction_id);
           mark_auction_finished(auction_id);
           
           pthread_mutex_lock(&auction_mutex);
@@ -922,7 +1062,7 @@ unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_pri
 }
 
 // Fonction pour diffuser toutes les enchères existantes
-int broadcast_all_auctions()
+int broadcast_all_auctions(int m_send)
 {
   pthread_mutex_lock(&auction_mutex);
 
@@ -933,21 +1073,12 @@ int broadcast_all_auctions()
     return 0;
   }
 
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-  {
-    perror("Échec de création du socket d'envoi multicast");
-    pthread_mutex_unlock(&auction_mutex);
-    return -1;
-  }
-
   // Copier les données des enchères pour éviter de garder le mutex verrouillé
   // pendant les opérations réseau
   struct Auction *auctions_copy = malloc(auctionSys.count * sizeof(struct Auction));
   if (!auctions_copy)
   {
     perror("Échec de l'allocation mémoire pour la copie des enchères");
-    close(send_sock);
     pthread_mutex_unlock(&auction_mutex);
     return -1;
   }
@@ -1014,18 +1145,15 @@ int broadcast_all_auctions()
 
     // Envoyer plusieurs fois pour augmenter les chances de réception
     int send_success = 0;
-    for (int j = 0; j < 2; j++)
-    { // Réduire à 2 envois au lieu de 3
-      if (send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port,
-                         auction_buffer, auction_buffer_size) >= 0)
-      {
+    for (int j = 0; j < 2; j++) { // Réduire à 2 envois au lieu de 3
+      if (send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port,
+                         auction_buffer, auction_buffer_size) >= 0) {
         send_success = 1;
       }
       usleep(200000); // Augmenter légèrement l'intervalle à 200ms
     }
 
-    if (send_success)
-    {
+    if (send_success) {
       success_count++;
     }
 
@@ -1034,7 +1162,6 @@ int broadcast_all_auctions()
   }
 
   free(auctions_copy);
-  close(send_sock);
 
   printf("Diffusion terminée : %d/%d enchères diffusées avec succès\n",
          success_count, count);
@@ -1042,17 +1169,10 @@ int broadcast_all_auctions()
   return success_count;
 }
 
-void send_rejection_message(struct message *original_msg)
-{
-  int send_sock = setup_multicast_sender();
-  if (send_sock < 0)
-    return;
-
+int send_rejection_message(int m_send, struct message *original_msg) {
   struct message *reject_msg = init_message(CODE_REFUS_PRIX);
-  if (!reject_msg)
-  {
-    close(send_sock);
-    return;
+  if (!reject_msg) {
+    return -1;
   }
 
   reject_msg->id = pSystem.my_id;
@@ -1065,10 +1185,44 @@ void send_rejection_message(struct message *original_msg)
   if (buffer)
   {
     message_to_buffer(reject_msg, buffer, buffer_size);
-    send_multicast(send_sock, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
+    send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
     free(buffer);
   }
 
   free_message(reject_msg);
-  close(send_sock);
+  return 0;
+}
+
+void display_auctions() {
+  printf("\n=== Enchères actives ===\n");
+  int active_count = 0;
+
+  for (int i = 0; i < auctionSys.count; i++) {
+    struct Auction *auction = &auctionSys.auctions[i];
+    if (!is_auction_finished(auction->auction_id)) {
+      printf("ID: %u, Prix actuel: %u, Créateur: %d\n", auction->auction_id,
+             auction->current_price, auction->creator_id);
+      active_count++;
+    }
+  }
+
+  if (active_count == 0) {
+    printf("Aucune enchère active\n");
+  }
+
+  printf("\n=== Enchères terminées ===\n");
+  int finished_count = 0;
+
+  for (int i = 0; i < auctionSys.count; i++) {
+    struct Auction *auction = &auctionSys.auctions[i];
+    if (is_auction_finished(auction->auction_id)) {
+      printf("ID: %u, Prix final: %u, Gagnant: %d\n", auction->auction_id,
+             auction->current_price, auction->id_dernier_prop);
+      finished_count++;
+    }
+  }
+
+  if (finished_count == 0) {
+    printf("Aucune enchère terminée\n");
+  }
 }
