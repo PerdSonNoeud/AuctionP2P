@@ -96,6 +96,13 @@ int send_new_pair(unsigned short id, struct in6_addr ip, unsigned short port);
 int recv_new_pair(int client_sock);
 
 /**
+ * @brief Print the list of connected peers
+ *
+ * Displays the details of all connected peers in the system.
+ */
+void print_pairs();
+
+/**
  * @brief print network information
  *
  *   Informations du réseau P2P:

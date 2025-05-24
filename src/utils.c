@@ -142,7 +142,7 @@ int buffer_to_message(struct message *msg, char *buffer) {
     perror("Error: strdup failed");
     return -1;
   }
-  printf("buffer : %s\n", buffer_copy);
+  printf("      buffer : [%s]\n", buffer_copy);
 
   char *token;
   char *saveptr;

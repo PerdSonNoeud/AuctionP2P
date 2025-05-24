@@ -72,9 +72,7 @@ int setup_multicast_receiver(const char *addr, int port) {
     close(sock);
     return -1;
   }
-
-  printf("  Multicast receveur PORT: %d, interface index: %u\n", port, group.ipv6mr_interface);
-
+  // printf("  Multicast receveur PORT: %d, interface index: %u\n", port, group.ipv6mr_interface);
   return sock;
 }
 
@@ -119,8 +117,7 @@ int setup_unicast_receiver(int port) {
     close(sock);
     return -1;
   }
-
-  printf("  Socket unicast configuré pour la réception sur port %d\n", port);
+  // printf("  Socket unicast configuré pour la réception sur port %d\n", port);
   return sock;
 }
 
@@ -147,8 +144,7 @@ int setup_unicast_sender(const char *s_addr, int port) {
     close(sock);
     return -1;
   }
-
-  printf("  Socket unicast UDP configuré pour l'envoie ADDR: %s  IP: %d\n", s_addr, port);
+  // printf("  Socket unicast UDP configuré pour l'envoie ADDR: %s  IP: %d\n", s_addr, port);
   return sock;
 }
 
@@ -184,8 +180,7 @@ int setup_server_socket(int port) {
     close(sock);
     return -1;
   }
-
-  printf("  Socket serveur TCP configuré pour la réception sur port %d\n", port);
+  // printf("  Socket serveur TCP configuré pour la réception sur port %d\n", port);
   return sock;
 }
 
@@ -225,8 +220,7 @@ int setup_client_socket(const char *addr, int port) {
     close(sock);
     return -1;
   }
-
-  printf("  Socket client TCP connecté à %s:%d\n", addr, port);
+  // printf("  Socket client TCP connecté à %s:%d\n", addr, port);
   return sock;
 }
 

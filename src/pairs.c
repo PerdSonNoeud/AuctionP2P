@@ -41,6 +41,17 @@ int init_pairs() {
   return 0;
 }
 
+int setup_timeout(int sock, int sec) {
+  struct timeval tv;
+  tv.tv_sec = sec;
+  tv.tv_usec = 0;
+  if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv)) < 0) {
+    perror("setsockopt a échoué");
+    return -1;
+  }
+  return 0;
+}
+
 int join_pairs(int m_sender) {
   // Send a request to join the system (CODE = 3)
   struct message *request = init_message(CODE_DEMANDE_LIAISON);
@@ -78,11 +89,8 @@ int join_pairs(int m_sender) {
   // Socket to receive unicast responses in UDP
   int u_recv = setup_unicast_receiver(pSystem.my_port);
   // Set timeout for unicast socket
-  struct timeval tv;
-  tv.tv_sec = TIMEOUT;
-  tv.tv_usec = 0;
-  if (setsockopt(u_recv, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv) < 0) {
-    perror("setsockopt a échoué");
+  if (setup_timeout(u_recv, TIMEOUT) < 0) {
+    perror("setup_timeout a échoué");
     close(u_recv);
     free(buffer);
     return -1;
@@ -131,7 +139,6 @@ int join_pairs(int m_sender) {
         // Get sender's address
         char sender_ip_str[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
-        printf("  Pair trouvé: ID=%d, IP=%s, Port=%d\n", response->id, sender_ip_str, response->port);
         // Save the sender as a new pair
         if (add_pair(response->id, sender.sin6_addr, response->port) < 0) {
           perror("add_pair a échoué");
@@ -147,7 +154,7 @@ int join_pairs(int m_sender) {
         free_message(response);
 
         // Send a message to the sender with code 5
-        printf("  Envoi d'un message d'information en TCP... (CODE = 5)\n");
+        printf("    Envoi d'un message d'information en TCP... (CODE = 5)\n");
         struct message *info_msg = init_message(CODE_INFO_PAIR); // CODE = 5 for Info Pair
         if (info_msg == NULL) {
           perror("Échec de l'initialisation du message d'information");
@@ -214,7 +221,7 @@ int join_pairs(int m_sender) {
         len = recv(client_sock, buffer, UNKNOWN_SIZE - 1, 0);
         if (len > 0) {
           buffer[len] = '\0'; // Ensure null-terminated string
-          printf("  Réponse reçue de l'expéditeur (%d octets)\n", len);
+          printf("    Réponse reçue de l'expéditeur (%d octets)\n", len);
 
           struct message *response = malloc(sizeof(struct message));
           if (response == NULL) {
@@ -233,9 +240,9 @@ int join_pairs(int m_sender) {
           free(buffer); // Converted to message, no longer needed
 
           if (response->code == CODE_ID_ACCEPTED) {
-            printf("  ID accepté: %d\n", pSystem.my_id);
+            printf("    ID accepté: %d\n", pSystem.my_id);
           } else if (response->code == CODE_ID_CHANGED) {
-            printf("  ID changé: %d\n", response->id);
+            printf("    ID changé: %d\n", response->id);
             pSystem.my_id = response->id;
           } else {
             printf("  Code de réponse inattendu: %d\n", response->code);
@@ -262,7 +269,7 @@ int join_pairs(int m_sender) {
         len = recv(client_sock, buffer, UNKNOWN_SIZE - 1, 0);
         if (len > 0) {
           buffer[len] = '\0'; // Ensure null-terminated string
-          printf("  Informations sur le système reçues (%d octets)\n", len);
+          printf("    Informations sur le système reçues (%d octets)\n", len);
 
           struct message *response = malloc(sizeof(struct message));
           if (response == NULL) {
@@ -281,13 +288,17 @@ int join_pairs(int m_sender) {
           free(buffer); // Converted to message, no longer needed
 
           if (response->code == CODE_INFO_SYSTEME) { // CODE = 7 for system info
-            printf("  Mise à jour des informations du système d'enchères...\n");
+            printf("    Mise à jour des informations du système d'enchères...\n");
             // Update the system information
             char ip_str[INET6_ADDRSTRLEN];
             inet_ntop(AF_INET6, &response->ip, ip_str, sizeof(ip_str));
             strcpy(pSystem.auction_addr, ip_str);
             pSystem.auction_port = response->port;
-            pSystem.count = response->nb; // Update the count of pairs
+            int max = 1;
+            if (response->nb > 0) {
+              max = response->nb; // Update max if we have more than one pair
+            }
+            pSystem.count = max; // Update the count of pairs + 1 for the one we're connected to
             // Update the pairs list
             for (int i = 0; i < response->nb; i++) {
               if (add_pair(response->info[i].id, response->info[i].ip, response->info[i].port) < 0) {
@@ -406,23 +417,13 @@ int handle_join(int m_recv, int server_sock) {
       perror("sendto a échoué");
       return -1;
     }
-    printf("Réponse de la demande de connexion envoyée... (CODE = 4)\n");
+    printf("  Réponse de la demande de connexion envoyée... (CODE = 4)\n");
 
     struct sockaddr_in6 client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     int client_sock = accept(server_sock, (struct sockaddr *)&client_addr, &client_addr_len);
     if (client_sock < 0) {
       perror("accept a échoué");
-      return -1;
-    }
-
-    // Définir un timeout pour le recv (par exemple, 5 secondes)
-    struct timeval timeout;
-    timeout.tv_sec = 5;  // 5 secondes de timeout
-    timeout.tv_usec = 0;
-    if (setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-      perror("setsockopt SO_RCVTIMEO a échoué");
-      close(client_sock);
       return -1;
     }
 
@@ -442,7 +443,7 @@ int handle_join(int m_recv, int server_sock) {
       }
     }
     info_buffer[info_len] = '\0'; // Ensure null termination
-    printf("  Information reçue du pair (%d octets)\n", info_len);
+    printf("    Information reçue du pair (%d octets)\n", info_len);
     struct message *info_msg = malloc(sizeof(struct message));
     if (info_msg == NULL) {
       perror("malloc a échoué");
@@ -455,6 +456,12 @@ int handle_join(int m_recv, int server_sock) {
       close(client_sock);
       return -1;
     }
+    if (info_msg->code != CODE_INFO_PAIR) { // CODE = 5 for Info Pair
+      fprintf(stderr, "Code de message inattendu: %d (attendu: %d)\n", info_msg->code, CODE_INFO_PAIR);
+      free_message(info_msg);
+      close(client_sock);
+      return -1;
+    }
     // Check if ID is valid
     int client_id = info_msg->info[0].id;
     int found = 1;
@@ -462,7 +469,7 @@ int handle_join(int m_recv, int server_sock) {
       found = 0;
       if (pSystem.my_id == client_id) {
         // If the ID is the same as our own, increment it
-        printf("  ID %d est notre propre ID, génération d'un nouvel ID...\n", client_id);
+        printf("    ID %d est notre propre ID, génération d'un nouvel ID...\n", client_id);
         client_id++;
         found = 1; // Set found to 1 to continue checking
       } else {
@@ -474,7 +481,7 @@ int handle_join(int m_recv, int server_sock) {
         }
         if (found) {
           // Generate a new ID not in use
-          printf("  ID %d déjà utilisé, génération d'un nouvel ID...\n", client_id);
+          printf("    ID %d déjà utilisé, génération d'un nouvel ID...\n", client_id);
           client_id++;
         }
       }
@@ -502,11 +509,12 @@ int handle_join(int m_recv, int server_sock) {
       free_message(response);
       return -1;
     }
-    if (response->code == CODE_ID_ACCEPTED) printf("Validation d'ID envoyé... (CODE = 50)\n");
-    else printf("Changement d'ID envoyé... (CODE = 51)\n");
+    if (response->code == CODE_ID_ACCEPTED) printf("  Validation d'ID envoyé... (CODE = 50)\n");
+    else printf("  Changement d'ID envoyé... (CODE = 51)\n");
 
     free_message(response);
     // Add the new pair to the system (CODE = 6)
+    sleep(1); // Wait for the other pairs to end their handle_join() process
     send_new_pair(info_msg->info[0].id, client_addr.sin6_addr, info_msg->info[0].port);
     sleep(1); // Wait for the new pair to be sent
     // Prepare the system information message (CODE = 7)
@@ -570,7 +578,7 @@ int handle_join(int m_recv, int server_sock) {
       close(client_sock);
       return -1;
     }
-    printf("Envoie des pairs du systèmes... (CODE = 7)\n");
+    printf("  Envoie des pairs du systèmes... (CODE = 7)\n");
 
     close(client_sock);
     // Add the new peer after sending the new pair to all peers
@@ -705,8 +713,6 @@ int recv_new_pair(int sock) {
       free_message(msg);
       return 0; // Ignore messages with our own ID
     }
-    printf("Nouveau pair reçu: ID=%d, IP=%s, Port=%d\n",
-           msg->info[0].id, inet_ntoa(*(struct in_addr *)&msg->info[0].ip), msg->info[0].port);
     // Add the new peer to the system
     if (add_pair(msg->info[0].id, msg->info[0].ip, msg->info[0].port) < 0) {
       perror("add_pair a échoué");
@@ -724,7 +730,7 @@ int recv_new_pair(int sock) {
 int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
   char ip_str[INET6_ADDRSTRLEN];
   inet_ntop(AF_INET6, &ip, ip_str, sizeof(ip_str));
-  printf("  Ajout du pair: ID=%d, IP=%s, Port=%d\n", id, ip_str, port);
+  printf("    Ajout du pair: ID=%d, IP=%s, Port=%d\n", id, ip_str, port);
 
   // Check if the peer already exists
   for (int i = 0; i < pSystem.count; i++) {
@@ -758,6 +764,17 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
   return 0;
 }
 
+void print_pairs() {
+  printf("  Pairs connectés:\n");
+  for (int i = 0; i < pSystem.count; i++) {
+    char ip_str[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
+    printf("    Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
+           i + 1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
+           pSystem.pairs[i].active ? "Oui" : "Non");
+  }
+}
+
 void print_network_info() {
   printf("\n  Informations du réseau P2P:\n");
   printf("    ID local: %d\n", pSystem.my_id);
@@ -767,13 +784,7 @@ void print_network_info() {
   printf("    Port local: %d\n", pSystem.my_port);
   printf("    Nombre de pairs connectés: %d\n", pSystem.count);
 
-  for (int i = 0; i < pSystem.count; i++) {
-    char peer_ip_str[INET6_ADDRSTRLEN];
-    inet_ntop(AF_INET6, &pSystem.pairs[i].ip, peer_ip_str, sizeof(peer_ip_str));
-    printf("    Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
-           i + 1, pSystem.pairs[i].id, peer_ip_str, pSystem.pairs[i].port,
-           pSystem.pairs[i].active ? "Oui" : "Non");
-  }
+  print_pairs();
 }
 
 void free_pairs() {

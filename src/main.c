@@ -44,18 +44,6 @@ int join_network() {
     printf("  Aucun réseau P2P trouvé.\n");
     return 1;
   }
-
-  printf("\n  Connexion au réseau P2P réussie!\n");
-
-  // Display network data
-  printf("\n  Pairs actuellement connectés: %d\n", pSystem.count);
-  for (int i = 0; i < pSystem.count; i++) {
-    char ip_str[INET6_ADDRSTRLEN];
-    inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
-    printf("  Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
-           i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
-           pSystem.pairs[i].active ? "Oui" : "Non");
-  }
   return 0;
 }
 
@@ -148,27 +136,8 @@ int main() {
     if (fds[0].revents & POLLIN) {
       int result = handle_join(m_recv, server_sock);
       if (result > 0) {
-        printf("Demande de connexion reçue et traitée\n");
-
-        // Display connected peers
-        printf("\nPairs actuellement connectés: %d\n", pSystem.count);
-        for (int i = 0; i < pSystem.count; i++) {
-          char ip_str[INET6_ADDRSTRLEN];
-          inet_ntop(AF_INET6, &pSystem.pairs[i].ip, ip_str, sizeof(ip_str));
-          printf("Pair %d: ID=%d, IP=%s, Port=%d, Actif=%s\n",
-                 i+1, pSystem.pairs[i].id, ip_str, pSystem.pairs[i].port,
-                 pSystem.pairs[i].active ? "Oui" : "Non");
-        }
-      }
-    }
-
-    // Check if data is available on stdin
-    if (fds[1].revents & POLLIN) {
-      char input;
-      if (read(STDIN_FILENO, &input, 1) > 0) {
-        if (input == 'q' || input == 'Q') {
-          running = 0;
-        }
+        printf("\nDemande de connexion reçue et traitée\n");
+        print_pairs();
       }
     }
 
@@ -186,6 +155,17 @@ int main() {
         close(client_sock);
       }
     }
+
+    // Check if data is available on stdin
+    if (fds[1].revents & POLLIN) {
+      char input;
+      if (read(STDIN_FILENO, &input, 1) > 0) {
+        if (input == 'q' || input == 'Q') {
+          running = 0;
+        }
+      }
+    }
+
   }
 
   // Small delay before closing sockets to avoid reuse issues
