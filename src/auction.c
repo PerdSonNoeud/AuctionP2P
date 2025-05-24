@@ -778,12 +778,12 @@ void *auction_monitor(void *arg)
         double elapsed = difftime(now, auction->last_bid_time);
 
         // Premier avertissement après AUCTION_TIMEOUT
-        if (elapsed > AUCTION_TIMEOUT && elapsed <= AUCTION_TIMEOUT + 2)
+        if (elapsed >= AUCTION_TIMEOUT && elapsed < AUCTION_TIMEOUT + 1)
         {
           send_end_warning(auction->auction_id);
         }
-        // Finalisation après 2*AUCTION_TIMEOUT
-        else if (elapsed > 2 * AUCTION_TIMEOUT)
+        // Finalisation après 2*AUCTION_TIMEOUT (30s)
+        else if (elapsed >= 2 * AUCTION_TIMEOUT)
         {
           finalize_auction(auction->auction_id);
           mark_auction_finished(auction->auction_id);
