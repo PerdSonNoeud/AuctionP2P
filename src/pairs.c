@@ -856,7 +856,6 @@ void print_network_info() {
 }
 
 void free_pairs() {
-  extern struct PairSystem pSystem;
   if (pSystem.pairs != NULL) {
     free(pSystem.pairs);
     pSystem.pairs = NULL;
