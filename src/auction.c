@@ -265,9 +265,6 @@ void start_auction(unsigned int auction_id)
   free_message(msg);
   close(send_sock);
 
-  // Reprendre le verrou pour la dernière opération
-  pthread_mutex_lock(&auction_mutex);
-
   // Démarrer le thread de surveillance si nécessaire
   if (!monitor_running)
   {
@@ -278,8 +275,6 @@ void start_auction(unsigned int auction_id)
       monitor_running = 0;
     }
   }
-
-  pthread_mutex_unlock(&auction_mutex);
 }
 
 // Fonction pour gérer les messages d'enchère reçus (CODE=9)
