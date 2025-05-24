@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "include/auction.h"
-#include "include/multicast.h"
+#include "include/sockets.h"
 #include "include/message.h"
 #include "include/utils.h"
 #include "include/pairs.h"
@@ -787,8 +787,7 @@ int validate_bid(unsigned int auction_id, unsigned short bidder_id, unsigned int
 }
 
 // Fonction exécutée par le thread de surveillance des enchères
-void *auction_monitor(void *arg)
-{
+void *auction_monitor() {
   while (monitor_running)
   {
     pthread_mutex_lock(&auction_mutex);

@@ -174,10 +174,9 @@ int quit_auction_system();
  * Thread function that periodically checks the status of auctions and 
  * triggers warnings or finalizations as needed.
  *
- * @param arg Thread argument (not used)
  * @return NULL
  */
-void *auction_monitor(void *arg);
+void *auction_monitor();
 
 /**
  * @brief Broadcast all existing auctions to all peers
