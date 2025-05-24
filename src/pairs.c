@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <errno.h>
 
+#define UNKNOWN_SIZE 1024 // Default size for unknown buffer sizes
 #define MAX_ATTEMPTS 3
 #define TIMEOUT 5
 
@@ -118,13 +119,12 @@ int join_auction() {
   while (attempts < MAX_ATTEMPTS) {
     // Attendre la réponse unicast sur notre socket dédié
     socklen_t sender_len = sizeof(sender);
-    buffer_size = 1024;
-    char resp_buffer[buffer_size];
-    memset(resp_buffer, 0, buffer_size);
+    char resp_buffer[UNKNOWN_SIZE];
+    memset(resp_buffer, 0, UNKNOWN_SIZE);
     // Ajouter des informations de débogage
 
     // Try to receive a message
-    int len = recvfrom(unicast_sock, resp_buffer, buffer_size - 1, 0,
+    int len = recvfrom(unicast_sock, resp_buffer, UNKNOWN_SIZE - 1, 0,
                       (struct sockaddr*)&sender, &sender_len);
     if (len > 0) {
       resp_buffer[len] = '\0'; // S'assurer que la chaîne est terminée
@@ -156,7 +156,7 @@ int join_auction() {
         printf("  Réponse de connexion reçue\n");
         // Get sender's address
         char sender_ip_str[INET6_ADDRSTRLEN];
-        inet_ntop(AF_INET6, &response->ip, sender_ip_str, sizeof(sender_ip_str));
+        inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip_str, sizeof(sender_ip_str));
         printf("  Pair trouvé: ID=%d, IP=%s, Port=%d\n", response->id, sender_ip_str, response->port);
 
         int client_sock = setup_client_socket(sender_ip_str, response->port);
@@ -170,6 +170,7 @@ int join_auction() {
           return -1;
         }
         // Send a message to the sender with code 5
+        printf("  Envoi d'un message d'information en TCP... (CODE = 5)\n");
         struct message *info_msg = init_message(CODE_INFO_PAIR); // CODE = 5 for Info Pair
         info_msg->id = pSystem.my_id;
         message_set_ip(info_msg, pSystem.my_ip);
@@ -189,7 +190,7 @@ int join_auction() {
           return -1;
         }
 
-        // Send the message
+        // Send the message (CODE = 5)
         if (send(client_sock, info_buffer, info_buffer_size, 0) <= 0) {
           perror("send a échoué (info pair)");
           free_message(info_msg);
@@ -304,10 +305,10 @@ int join_auction() {
 int handle_join(int sock) {
   // Sender address
   struct sockaddr_in6 sender;
-  char buffer[1024]; // Static buffer with fixed size
-  memset(buffer, 0, sizeof(buffer));
+  char buffer[UNKNOWN_SIZE]; // Static buffer with fixed size
+  memset(buffer, 0, UNKNOWN_SIZE);
 
-  int len = receive_multicast(sock, buffer, sizeof(buffer), &sender);
+  int len = receive_multicast(sock, buffer, UNKNOWN_SIZE, &sender);
   if (len <= 0) {
     return 0; // No data or error
   }
@@ -400,9 +401,9 @@ int handle_join(int sock) {
     }
 
     // Wait for code 5 (Info Pair)
-    char info_buffer[1024];
-    memset(info_buffer, 0, sizeof(info_buffer));
-    int info_len = recv(client_sock, info_buffer, sizeof(info_buffer) - 1, 0);
+    char info_buffer[UNKNOWN_SIZE];
+    memset(info_buffer, 0, UNKNOWN_SIZE);
+    int info_len = recv(client_sock, info_buffer, UNKNOWN_SIZE - 1, 0);
     if (info_len <= 0) {
       perror("recv a échoué");
       close(client_sock);
@@ -412,6 +413,7 @@ int handle_join(int sock) {
       return -1;
     }
     info_buffer[info_len] = '\0'; // Ensure null termination
+    printf("  Information reçue du pair (%d octets)\n", info_len);
     struct message *info_msg = malloc(sizeof(struct message));
     if (info_msg == NULL) {
       perror("malloc a échoué");
@@ -442,9 +444,11 @@ int handle_join(int sock) {
       }
       if (!found) {
         // Generate a new ID not in use
+        printf("  ID %d déjà utilisé, génération d'un nouvel ID...\n", client_id);
         client_id++;
       }
     }
+    printf("  ID du pair: %d\n", client_id);
     // Add the new peer
     if (add_pair(client_id, info_msg->ip, info_msg->port) < 0) {
       perror("add_pair a échoué");
@@ -464,7 +468,7 @@ int handle_join(int sock) {
       // Give the new ID to the client
       response->id = client_id;
     }
-    memset(resp_buffer, 0, sizeof(resp_buffer));
+    memset(resp_buffer, 0, sizeof(resp_buffer)); // Code = 50 or 51, most likely to be smaller than Code 4
     if (message_to_buffer(response, resp_buffer, sizeof(resp_buffer)) < 0) {
       perror("message_to_buffer a échoué");
       free(info_msg);
@@ -489,7 +493,7 @@ int handle_join(int sock) {
     free_message(response);
     free_message(request);
     close(send_sock);
-    return 1;
+    return client_sock; // Keep the client socket open for further communication
   } else if (request->code == CODE_REPONSE_LIAISON) { // CODE = 4 for response
     // Ignorer tous les messages qui ont notre ID
     if (request->id == pSystem.my_id) {
@@ -534,10 +538,6 @@ int add_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
   pSystem.pairs[pSystem.count].active = 1;
   pSystem.count++;
 
-  return 0;
-}
-
-int quit_auction() {
   return 0;
 }
 

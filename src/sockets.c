@@ -194,8 +194,14 @@ int setup_client_socket(const char *addr, int port) {
   memset(&s_addr, 0, sizeof(s_addr));
   s_addr.sin6_family = AF_INET6;
   s_addr.sin6_port = htons(port);
+  s_addr.sin6_scope_id = if_nametoindex("eth0");
 
-  if (inet_pton(AF_INET6, addr, &s_addr.sin6_addr) <= 0) {
+  // Gérer l'adresse IPv6 et l'interface si nécessaire
+  char addr_copy[INET6_ADDRSTRLEN];
+  strncpy(addr_copy, addr, sizeof(addr_copy) - 1);
+  addr_copy[sizeof(addr_copy) - 1] = '\0';
+
+  if (inet_pton(AF_INET6, addr_copy, &s_addr.sin6_addr) <= 0) {
     perror("inet_pton a échoué");
     close(sock);
     return -1;
@@ -203,10 +209,12 @@ int setup_client_socket(const char *addr, int port) {
 
   if (connect(sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) < 0) {
     perror("connect a échoué");
+    printf("Erreur: %d (%s)\n", errno, strerror(errno));
     close(sock);
     return -1;
   }
 
+  printf("  Socket client TCP connecté à %s:%d\n", addr, port);
   return sock;
 }
 
