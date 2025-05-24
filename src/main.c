@@ -107,7 +107,7 @@ int main() {
   print_network_info();
 
   // Configuration for poll
-  struct pollfd fds[3];
+  struct pollfd fds[2];
 
   // Monitor network socket
   fds[0].fd = m_recv;
@@ -117,15 +117,11 @@ int main() {
   fds[1].fd = STDIN_FILENO;
   fds[1].events = POLLIN;
 
-  // Monitor server socket for incoming connections
-  fds[2].fd = server_sock;
-  fds[2].events = POLLIN;
-
   printf("\nAppuyez sur 'q' et Entrée pour quitter le programme\n");
 
   running = 1;
   while (running) {
-    int poll_result = poll(fds, 3, 1000); // 1 second timeout
+    int poll_result = poll(fds, 2, 1000); // 1 second timeout
 
     if (poll_result < 0) {
       perror("Erreur lors de l'appel à poll");
@@ -141,21 +137,6 @@ int main() {
       }
     }
 
-    // Check if there's an incoming connection on the server socket
-    if (fds[2].revents & POLLIN) {
-      struct sockaddr_in6 client_addr;
-      socklen_t client_addr_len = sizeof(client_addr);
-
-      int client_sock = accept(server_sock, (struct sockaddr *)&client_addr, &client_addr_len);
-      if (client_sock < 0) {
-        perror("Échec lors de l'acceptation de la connexion");
-      } else {
-        // Handle the new pair
-        recv_new_pair(client_sock);
-        close(client_sock);
-      }
-    }
-
     // Check if data is available on stdin
     if (fds[1].revents & POLLIN) {
       char input;
@@ -165,7 +146,6 @@ int main() {
         }
       }
     }
-
   }
 
   // Small delay before closing sockets to avoid reuse issues

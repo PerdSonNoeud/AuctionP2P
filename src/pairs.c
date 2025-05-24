@@ -432,15 +432,9 @@ int handle_join(int m_recv, int server_sock) {
     memset(info_buffer, 0, UNKNOWN_SIZE);
     int info_len = recv(client_sock, info_buffer, UNKNOWN_SIZE - 1, 0);
     if (info_len <= 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        fprintf(stderr, "Timeout atteint en attendant les informations du pair\n");
-        close(client_sock);
-        return 0; // Timeout reached, no data received
-      } else {
-        perror("recv a échoué");
-        close(client_sock);
-        return -1;
-      }
+      perror("recv a échoué");
+      close(client_sock);
+      return -1;
     }
     info_buffer[info_len] = '\0'; // Ensure null termination
     printf("    Information reçue du pair (%d octets)\n", info_len);
@@ -456,11 +450,21 @@ int handle_join(int m_recv, int server_sock) {
       close(client_sock);
       return -1;
     }
-    if (info_msg->code != CODE_INFO_PAIR) { // CODE = 5 for Info Pair
-      fprintf(stderr, "Code de message inattendu: %d (attendu: %d)\n", info_msg->code, CODE_INFO_PAIR);
+    if (info_msg->code == CODE_INFO_PAIR_BROADCAST) { // CODE = 6 if it is a broadcast instead
+      if (info_msg->info[0].id == pSystem.my_id) {
+        printf("Message ignoré : message avec notre propre ID (%d)\n", pSystem.my_id);
+        free_message(info_msg);
+        return 0; // Ignore messages with our own ID
+      }
+      // Add the new peer to the system
+      if (add_pair(info_msg->info[0].id, info_msg->info[0].ip, info_msg->info[0].port) < 0) {
+        perror("add_pair a échoué");
+        free_message(info_msg);
+        return -1;
+      }
       free_message(info_msg);
       close(client_sock);
-      return -1;
+      return 1; // Successfully added the peer
     }
     // Check if ID is valid
     int client_id = info_msg->info[0].id;
@@ -515,7 +519,7 @@ int handle_join(int m_recv, int server_sock) {
     free_message(response);
     // Add the new pair to the system (CODE = 6)
     sleep(1); // Wait for the other pairs to end their handle_join() process
-    send_new_pair(info_msg->info[0].id, client_addr.sin6_addr, info_msg->info[0].port);
+    send_new_pair(client_id, client_addr.sin6_addr, info_msg->info[0].port);
     sleep(1); // Wait for the new pair to be sent
     // Prepare the system information message (CODE = 7)
     struct message *system_info = init_message(CODE_INFO_SYSTEME);
@@ -679,51 +683,6 @@ int send_new_pair(unsigned short id, struct in6_addr ip, unsigned short port) {
     free(buffer);
     close(sock);
   }
-  return 0;
-}
-
-int recv_new_pair(int sock) {
-  printf("  Attente d'un nouveau pair...\n");
-  char buffer[UNKNOWN_SIZE];
-  memset(buffer, 0, UNKNOWN_SIZE);
-
-  int len = recv(sock, buffer, UNKNOWN_SIZE - 1, 0);
-  if (len <= 0) {
-    perror("recv a échoué");
-    return -1;
-  }
-  buffer[len] = '\0'; // Ensure null-termination
-
-  struct message *msg = malloc(sizeof(struct message));
-  if (msg == NULL) {
-    perror("malloc a échoué");
-    return -1;
-  }
-
-  if (buffer_to_message(msg, buffer) < 0) {
-    perror("buffer_to_message a échoué");
-    free_message(msg);
-    return -1;
-  }
-
-  // Check if the message is of type CODE_INFO_PAIR_BROADCAST
-  if (msg->code == CODE_INFO_PAIR_BROADCAST) {
-    if (msg->info[0].id == pSystem.my_id) {
-      printf("Message ignoré : message avec notre propre ID (%d)\n", pSystem.my_id);
-      free_message(msg);
-      return 0; // Ignore messages with our own ID
-    }
-    // Add the new peer to the system
-    if (add_pair(msg->info[0].id, msg->info[0].ip, msg->info[0].port) < 0) {
-      perror("add_pair a échoué");
-      free_message(msg);
-      return -1;
-    }
-  } else {
-    printf("Message reçu mais code incorrect: %d\n", msg->code);
-  }
-
-  free_message(msg);
   return 0;
 }
 
