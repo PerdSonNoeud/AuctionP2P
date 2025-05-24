@@ -11,9 +11,13 @@
 #define CODE_VALIDATION         1   // Validation of a message by a peer
 #define CODE_CONSENSUS          2   // Message validated by consensus (<=3 peers)
 #define CODE_CONSENSUS_SUITE    20  // Additional validations (>3 peers)
+
 #define CODE_DEMANDE_LIAISON    3   // Request to join the system
 #define CODE_REPONSE_LIAISON    4   // Response with personal address
 #define CODE_INFO_PAIR          5   // Send new peer information
+#define CODE_ID_ACCEPTED        50  // Added the new peer's ID
+#define CODE_ID_CHANGED         51  // Changed the new peer's ID
+
 #define CODE_INFO_PAIR_BROADCAST 6  // Broadcast new peer information
 #define CODE_INFO_SYSTEME       7   // System information (auction address + peers)
 #define CODE_NOUVELLE_VENTE     8   // Initiate a new auction
@@ -31,6 +35,17 @@
 #define SEPARATOR "|"
 
 /**
+ * Structure to hold peer information
+ * Used in the message structure to store peer details
+ */
+struct info {
+  uint16_t id;          // Peer ID
+  struct in6_addr ip;   // Peer IP address
+  uint16_t port;        // Peer port number
+  char cle[60];         // Key
+};
+
+/**
  * Message structure for network communication
  * Format: CODE | ID | LMESS | MESS | LSIG | SIG
  */
@@ -46,7 +61,8 @@ struct message {
   char cle[60];         // Key
   uint32_t numv;        // Auction number
   uint32_t prix;        // Price
-  uint16_t nb;          // Number of elements
+  int nb;               // Number of elements
+  struct info *info;    // Array of peer information
 };
 
 /**
@@ -54,7 +70,7 @@ struct message {
  *
  * @param msg Pointer to the message to display
  */
-void afficher_message(struct message* msg);
+void print_message(struct message* msg);
 
 /**
  * @brief Create a new message structure with the given code
@@ -108,6 +124,36 @@ int message_set_ip(struct message* msg, struct in6_addr ip);
 * @return 0 on success, -1 on error
 */
 int message_set_cle(struct message* msg, const char* cle);
+
+/**
+ * @brief Set the auction number in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param numv The auction number to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_nb(struct message *msg, int nb);
+
+/**
+ * @brief Initialize an info structure
+ *
+ * @param info Pointer to the info structure to initialize
+ * @param id Peer ID
+ * @param ip Peer IPv6 address
+ * @param port Peer communication port
+ * @return 0 on success, -1 on error
+ */
+int init_info(struct info *info, int id, struct in6_addr ip, uint16_t port);
+
+/**
+ * @brief Set the info in the message structure
+ *
+ * @param msg Pointer to the message to modify
+ * @param index Index of the info to set
+ * @param info Pointer to the info structure to set
+ * @return 0 on success, -1 on error
+ */
+int message_set_info(struct message *msg, int index, struct info *info);
 
 /**
  * @brief Free the memory allocated for a message structure

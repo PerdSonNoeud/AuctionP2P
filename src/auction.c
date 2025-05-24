@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "include/auction.h"
-#include "include/multicast.h"
+#include "include/sockets.h"
 #include "include/message.h"
 
 struct AuctionSystem auctionSys;

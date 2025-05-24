@@ -44,9 +44,10 @@ int init_pairs();
  * Attempts to join an existing auction network by sending a join request
  * and waiting for a response.
  *
+ * @param m_sender Socket to send multicast messages
  * @return 0 on success, negative value on error
  */
-int join_auction();
+int join_pairs(int m_sender);
 
 /**
  * @brief Handle join requests from other peers
@@ -55,9 +56,10 @@ int join_auction();
  * the peer system accordingly.
  *
  * @param sock Socket to use for communication
+ * @param server_sock Socket for server communication
  * @return 1 if a peer was added, 0 if no peer was added, negative value on error
  */
-int handle_join(int sock);
+int handle_join(int sock, int server_sock);
 
 /**
  * @brief Add a new peer to the system
@@ -70,5 +72,61 @@ int handle_join(int sock);
  * @return 0 on success, negative value on error
  */
 int add_pair(unsigned short id, struct in6_addr ip, unsigned short port);
+
+/**
+ * @brief Send a new peer to the system
+ *
+ * Sends the details of a new peer to the multicast group.
+ *
+ * @param id Peer identifier
+ * @param ip Peer IPv6 address
+ * @param port Peer communication port
+ * @return 0 on success, negative value on error
+ */
+int send_new_pair(unsigned short id, struct in6_addr ip, unsigned short port);
+
+/**
+ * @brief Receive information from a peer (TCP)
+ *
+ * Sends the current peer system information to a specified peer.
+ *
+ * @param sock Socket to use for sending
+ * @return 0 on success, negative value on error
+ */
+int recv_message(int sock);
+
+/**
+ * @brief Quit the peer system
+ *
+ * Disconnects from the peer system and cleans up resources.
+ *
+ * @return 0 on success, negative value on error
+ */
+int quit_pairs();
+
+/**
+ * @brief Print the list of connected peers
+ *
+ * Displays the details of all connected peers in the system.
+ */
+void print_pairs();
+
+/**
+ * @brief print network information
+ *
+ *   Informations du réseau P2P:
+ *     ID local: pSystem.my_id
+ *     Port local: pSystem.my_port
+ *     Nombre de pairs connectés: pSystem.count
+ *     Liste des pairs...
+ */
+void print_network_info();
+
+/**
+ * @brief Free resources used by the peer system
+ *
+ * Cleans up and releases memory allocated for the peer system.
+ */
+void free_pairs();
 
 #endif /* PAIRS_H */
