@@ -342,7 +342,7 @@ int start_auction(int m_send, unsigned int auction_id) {
   msg->numv = auction_id;
   msg->prix = auction->initial_price;
 
-  if (message_set_mess(msg, "Nouvelle enchère") < 0 || message_set_sig(msg, "") < 0)  {
+  if (message_set_mess(msg, "Nouvelle enchère") < 0 || message_set_sig(msg) < 0)  {
     perror("Échec de l'initialisation des champs du message");
     free_message(msg);
     return -1;
@@ -1076,7 +1076,7 @@ int broadcast_all_auctions(int m_send)
     auction_msg->prix = auctions_copy[i].initial_price;
 
     if (message_set_mess(auction_msg, "Synchronisation d'enchère") < 0 ||
-        message_set_sig(auction_msg, "") < 0)
+        message_set_sig(auction_msg) < 0)
     {
       perror("Échec de l'initialisation des champs du message");
       free_message(auction_msg);
