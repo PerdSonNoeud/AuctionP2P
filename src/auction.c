@@ -27,19 +27,16 @@ int monitor_running = 0;
 // Mutex pour protéger l'accès aux enchères
 pthread_mutex_t auction_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int init_auction_system()
-{
+int init_auction_system() {
   // Vérifier que le système n'a pas déjà été initialisé
-  if (auctionSys.auctions != NULL)
-  {
+  if (auctionSys.auctions != NULL) {
     printf("Le système d'enchères est déjà initialisé\n");
     return 0;
   }
 
   // Allouer la mémoire initiale pour le tableau d'enchères
   auctionSys.auctions = malloc(10 * sizeof(struct Auction));
-  if (!auctionSys.auctions)
-  {
+  if (!auctionSys.auctions) {
     perror("malloc a échoué pour le tableau d'enchères");
     return -1;
   }
@@ -61,14 +58,12 @@ int init_auction_system()
   return 0;
 }
 
-void cleanup_auction_system()
-{
+void cleanup_auction_system() {
   // Prendre le verrou avant le nettoyage
   pthread_mutex_lock(&auction_mutex);
 
   // Arrêter le thread de surveillance
-  if (monitor_running)
-  {
+  if (monitor_running) {
     monitor_running = 0;
 
     // Relâcher le verrou pendant que nous attendons le thread
@@ -78,8 +73,7 @@ void cleanup_auction_system()
   }
 
   // Libérer la mémoire des enchères
-  if (auctionSys.auctions != NULL)
-  {
+  if (auctionSys.auctions != NULL) {
     free(auctionSys.auctions);
     auctionSys.auctions = NULL;
   }
@@ -95,23 +89,19 @@ void cleanup_auction_system()
 }
 
 // Fonction qui génère un ID unique pour une enchère
-unsigned int generate_auction_id()
-{
+unsigned int generate_auction_id() {
   auction_counter++;
   // Concaténation : ID du pair (16 bits hauts) + compteur (16 bits bas)
-  return ((unsigned int)pSystem.my_id << 16) | (auction_counter & 0xFFFF);
+  int size = nbDigits(pSystem.my_id) + nbDigits(auction_counter) + 1; // +1 pour le '\0'
+  char id_str[size];
+  snprintf(id_str, size, "%u%u", pSystem.my_id, auction_counter);
+  return (unsigned int) atoi(id_str);
 }
 
 // Fonction pour trouver une enchère par son ID
-struct Auction *find_auction(unsigned int auction_id)
-{
+struct Auction *find_auction(unsigned int auction_id) {
   for (int i = 0; i < auctionSys.count; i++)
-  {
-    if (auctionSys.auctions[i].auction_id == auction_id)
-    {
-      return &auctionSys.auctions[i];
-    }
-  }
+    if (auctionSys.auctions[i].auction_id == auction_id) return &auctionSys.auctions[i];
   return NULL;
 }
 
@@ -138,14 +128,35 @@ int handle_auction_message(int auc_sock, int m_send) {
 
   switch (msg->code) {
     case CODE_NOUVELLE_VENTE: // Code 8 - New auction
+      if (pSystem.my_id == msg->id) {
+        free_message(msg);
+        return 0; // Ignore messages from ourselves
+      }
       printf("Nouvelle vente reçue - ID: %d, NUMV: %u, PRIX: %u\n", msg->id,  msg->numv, msg->prix);
 
       // Créer une structure pour le créateur
       struct Pair creator;
-      creator.id = msg->id;
-      creator.ip = sender.sin6_addr;
-      creator.port = ntohs(sender.sin6_port);
-      creator.active = 1;
+      if (pSystem.my_id == msg->id) {
+        // Si le créateur est nous-mêmes, utiliser nos propres informations
+        creator.id = pSystem.my_id;
+        creator.ip = pSystem.my_ip;
+        creator.port = pSystem.my_port;
+        creator.active = 1;
+      } else {
+        creator.id = 0;
+        creator.active = 0;
+        for (int i = 0; i < pSystem.count; i++) {
+          if (pSystem.pairs[i].id == msg->id && pSystem.pairs[i].active) {
+            creator = pSystem.pairs[i];
+            break;
+          }
+        }
+      }
+      if (creator.id == 0 || !creator.active) {
+        fprintf(stderr, "Erreur: Créateur de l'enchère %u introuvable (%d)\n", msg->numv, msg->id);
+        free_message(msg);
+        return -1;
+      }
 
       // Chercher si cette enchère existe déjà
       struct Auction *existing = find_auction(msg->numv);
@@ -165,6 +176,7 @@ int handle_auction_message(int auc_sock, int m_send) {
                    existing->auction_id, existing->current_price,  existing->creator_id);
           } else {
             printf("ERREUR: Impossible de trouver l'enchère %u après sa création!\n", msg->numv);
+            return -1;
           }
         }
       } else {
@@ -174,6 +186,10 @@ int handle_auction_message(int auc_sock, int m_send) {
       break;
 
     case CODE_ENCHERE: // Code 9 - Enchère d'un pair
+      if (pSystem.my_id == msg->id) {
+        free_message(msg);
+        return 0; // Ignore messages from ourselves
+      }
       printf("Enchère reçue - ID: %d, NUMV: %u, PRIX: %u\n", msg->id, msg->numv, msg->prix);
       handle_bid(m_send, msg);
       break;
@@ -234,8 +250,7 @@ int create_auction(int m_send) {
   return start_auction(m_send, auction_id);
 }
 
-unsigned int init_auction(struct Pair *creator, unsigned int initial_price)
-{
+unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
   pthread_mutex_lock(&auction_mutex);
 
   printf("Initialisation d'une nouvelle enchère...\n");
@@ -395,22 +410,13 @@ int start_auction(int m_send, unsigned int auction_id) {
 }
 
 // Fonction pour gérer les messages d'enchère reçus (CODE=9)
-int handle_bid(int m_send, struct message *msg)
-{
-  if (msg->code != CODE_ENCHERE)
-  {
-    return -1;
-  }
-
+int handle_bid(int m_send, struct message *msg) {
   pthread_mutex_lock(&auction_mutex);
 
   struct Auction *auction = find_auction(msg->numv);
-  if (!auction)
-  {
+  if (!auction) {
     unsigned short supervisor_id = (msg->numv >> 16) & 0xFFFF;
-
-    if (supervisor_id == pSystem.my_id)
-    {
+    if (supervisor_id == pSystem.my_id) {
       fprintf(stderr, "Enchère reçue pour notre vente inconnue ID=%u\n", msg->numv);
     }
     pthread_mutex_unlock(&auction_mutex);
@@ -418,14 +424,13 @@ int handle_bid(int m_send, struct message *msg)
   }
 
   // Vérification que l'enchère est encore en cours
-  if (is_auction_finished(auction->auction_id))
-  {
+  if (is_auction_finished(auction->auction_id)) {
     fprintf(stderr, "Erreur: L'enchère %u est terminée\n", msg->numv);
     pthread_mutex_unlock(&auction_mutex);
     return -1;
   }
 
-  unsigned short supervisor_id = (auction->auction_id >> 16) & 0xFFFF;
+  unsigned short supervisor_id = auction->creator_id;
 
   // Si nous sommes le superviseur de cette enchère, nous devons relayer l'enchère
   if (supervisor_id == pSystem.my_id) {
@@ -456,47 +461,56 @@ int handle_bid(int m_send, struct message *msg)
 
     // Relayer l'enchère (CODE_ENCHERE_SUPERVISEUR = 10)
     struct message *relay_msg = init_message(CODE_ENCHERE_SUPERVISEUR);
-    if (relay_msg) {
-      relay_msg->id = id;
-      relay_msg->numv = auction_id;
-      relay_msg->prix = prix;
+    if (relay_msg == NULL) {
+      perror("Échec de l'initialisation du message relayé");
+      return -1;
+    }
+    relay_msg->id = id;
+    relay_msg->numv = auction_id;
+    relay_msg->prix = prix;
 
-      int buffer_size = get_buffer_size(relay_msg);
-      char *buffer = malloc(buffer_size);
-      if (buffer) {
-        message_to_buffer(relay_msg, buffer, buffer_size);
-        printf("Relais de l'offre: enchère %u, offrant %d, prix %u\n",
-               msg->numv, msg->id, msg->prix);
-        send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size);
-        free(buffer);
-      }
+    int buffer_size = get_buffer_size(relay_msg);
+    char *buffer = malloc(buffer_size);
+    if (buffer == NULL) {
+      perror("Échec de l'allocation du buffer pour le message relayé");
       free_message(relay_msg);
+      return -1;
     }
+    if (message_to_buffer(relay_msg, buffer, buffer_size)) {
+      perror("Échec de la conversion du message relayé en buffer");
+      free(buffer);
+      free_message(relay_msg);
+      return -1;
+    }
+    free_message(relay_msg);
+
+    printf("Relais de l'offre: enchère %u, offrant %d, prix %u\n", msg->numv, msg->id, msg->prix);
+    // Code = 10 - Envoi de l'enchère relayée
+    if (send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0) {
+      perror("Échec de l'envoi de l'enchère relayée");
+      free(buffer);
+      return -1;
+    }
+    free(buffer);
+    return 0;
+  }
+  // Si nous ne sommes pas le superviseur, mettons quand même à jour l'enchère locale
+  // si l'offre vient de nous-mêmes
+  if (msg->id == pSystem.my_id && msg->prix > auction->current_price) {
+    printf("Mise à jour locale de l'enchère %u: prix = %u (offrant: nous)\n",
+           auction->auction_id, msg->prix);
+    auction->current_price = msg->prix;
+    auction->id_dernier_prop = msg->id;
+    auction->last_bid_time = time(NULL);
   } else {
-    // Si nous ne sommes pas le superviseur, mettons quand même à jour l'enchère locale
-    // si l'offre vient de nous-mêmes
-    if (msg->id == pSystem.my_id && msg->prix > auction->current_price)
-    {
-      printf("Mise à jour locale de l'enchère %u: prix = %u (offrant: nous)\n",
-             auction->auction_id, msg->prix);
-      auction->current_price = msg->prix;
-      auction->id_dernier_prop = msg->id;
-      auction->last_bid_time = time(NULL);
-    }
-    else
-    {
-      // Si nous ne sommes pas le superviseur, nous vérifions seulement que le prix est supérieur
-      // pour information utilisateur, mais nous ne faisons rien d'autre
-      if (msg->prix <= auction->current_price)
-      {
-        printf("Offre reçue (non-superviseur): prix (%u) inférieur ou égal au prix actuel (%u)\n",
-               msg->prix, auction->current_price);
-      }
-      else
-      {
-        printf("Offre reçue (non-superviseur): prix (%u) supérieur au prix actuel (%u) - en attente du superviseur\n",
-               msg->prix, auction->current_price);
-      }
+    // Si nous ne sommes pas le superviseur, nous vérifions seulement que le prix est supérieur
+    // pour information utilisateur, mais nous ne faisons rien d'autre
+    if (msg->prix <= auction->current_price) {
+      printf("Offre reçue (non-superviseur): prix (%u) inférieur ou égal au prix actuel (%u)\n",
+             msg->prix, auction->current_price);
+    } else {
+      printf("Offre reçue (non-superviseur): prix (%u) supérieur au prix actuel (%u) - en attente du superviseur\n",
+             msg->prix, auction->current_price);
     }
   }
 
@@ -505,25 +519,21 @@ int handle_bid(int m_send, struct message *msg)
 
 // Fonction pour gérer les enchères relayées par le superviseur (CODE=10)
 int handle_supervisor_bid(struct message *msg) {
-  if (msg->code != CODE_ENCHERE_SUPERVISEUR) {
-    return -1;
-  }
-
+  printf("aaaaa\n");
   pthread_mutex_lock(&auction_mutex);
+  printf("après lock\n");
 
   struct Auction *auction = find_auction(msg->numv);
-  if (!auction)
-  {
+  printf("après find\n");
+  if (!auction) {
     // Si l'enchère n'existe pas dans notre système, on l'ajoute
     printf("Réception d'une enchère pour une vente inconnue (ID=%u). Création de l'enchère.\n", msg->numv);
 
-    if (auctionSys.count >= auctionSys.capacity)
-    {
+    if (auctionSys.count >= auctionSys.capacity) {
       size_t new_capacity = auctionSys.capacity * 2;
       struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
 
-      if (!new_auctions)
-      {
+      if (!new_auctions) {
         perror("Échec de la réallocation du tableau d'enchères");
         pthread_mutex_unlock(&auction_mutex);
         return -1;
@@ -556,15 +566,16 @@ int handle_supervisor_bid(struct message *msg) {
     pthread_mutex_unlock(&auction_mutex);
     return 0;
   }
+  printf("après gros if\n");
 
   // Vérifier si le prix proposé est supérieur au prix actuel
-  if (msg->prix <= auction->current_price)
-  {
+  if (msg->prix <= auction->current_price) {
     printf("Prix proposé (%u) inférieur ou égal au prix actuel (%u). Enchère ignorée.\n",
            msg->prix, auction->current_price);
     pthread_mutex_unlock(&auction_mutex);
     return 0;
   }
+  printf("prix ok\n");
 
   // Mettre à jour les données de l'enchère
   unsigned int ancien_prix = auction->current_price;
@@ -578,6 +589,7 @@ int handle_supervisor_bid(struct message *msg) {
          auction->auction_id, ancien_prix, msg->prix, ancien_proposant, msg->id);
 
   pthread_mutex_unlock(&auction_mutex);
+  printf("fin\n");
   return 0;
 }
 
@@ -808,7 +820,7 @@ int make_bid(int m_send) {
     return -1;
   }
 
-  struct message *msg = init_message(CODE_ENCHERE);
+  struct message *msg = init_message(CODE_ENCHERE); // Code 9 - Enchérir une vente
   if (!msg) {
     perror("Échec de l'initialisation du message");
     return -1;
@@ -831,32 +843,32 @@ int make_bid(int m_send) {
     free_message(msg);
     return -1;
   }
+  free_message(msg);
 
   if (send_multicast(m_send, pSystem.auction_addr, pSystem.auction_port, buffer, buffer_size) < 0) {
     perror("Échec de l'envoi de l'enchère");
-  } else {
-    pthread_mutex_lock(&auction_mutex);
-    if (auction && !is_auction_finished(auction_id)) {
-      // Mise à jour temporaire pour l'affichage
-      unsigned int old_price = auction->current_price;
-
-      auction->current_price = price;
-      auction->id_dernier_prop = pSystem.my_id;
-      auction->last_bid_time = time(NULL);
-
-      printf("Prix local mis à jour de %u à %u, en attente de confirmation...\n", old_price, price);
-
-      // Afficher les informations mises à jour
-      pthread_mutex_unlock(&auction_mutex);
-      display_auctions();
-    } else {
-      pthread_mutex_unlock(&auction_mutex);
-      printf("Attention: L'enchère pourrait être terminée\n");
-    }
+    free(buffer);
+    return -1;
   }
-
   free(buffer);
-  free_message(msg);
+  pthread_mutex_lock(&auction_mutex);
+  if (!is_auction_finished(auction_id)) {
+    // Mise à jour temporaire pour l'affichage
+    unsigned int old_price = auction->current_price;
+
+    auction->current_price = price;
+    auction->id_dernier_prop = pSystem.my_id;
+    auction->last_bid_time = time(NULL);
+
+    printf("Prix local mis à jour de %u à %u, en attente de confirmation...\n", old_price, price);
+
+    // Afficher les informations mises à jour
+    pthread_mutex_unlock(&auction_mutex);
+    display_auctions();
+  } else {
+    pthread_mutex_unlock(&auction_mutex);
+    printf("Attention: L'enchère pourrait être terminée\n");
+  }
   return 1;
 }
 
@@ -927,30 +939,24 @@ int validate_bid(int m_send, unsigned int auction_id, unsigned short bidder_id, 
 
 // Fonction exécutée par le thread de surveillance des enchères
 void *auction_monitor(void *m_send_ptr) {
-  while (monitor_running)
-  {
+  while (monitor_running) {
     pthread_mutex_lock(&auction_mutex);
     
-    for (int i = 0; i < auctionSys.count; i++)
-    {
+    for (int i = 0; i < auctionSys.count; i++) {
       struct Auction *auction = &auctionSys.auctions[i];
       
       // Ignorer les enchères déjà terminées
-      if (auction->last_bid_time == 0 || auction->auction_id == 0)
-      {
+      if (auction->last_bid_time == 0 || auction->auction_id == 0) {
         continue;
       }
-      
+
       unsigned short supervisor_id = (auction->auction_id >> 16) & 0xFFFF;
-      
       // Seul le superviseur gère les timeouts
-      if (supervisor_id == pSystem.my_id)
-      {
+      if (supervisor_id == pSystem.my_id) {
         time_t now = time(NULL);
         double time_since_last_bid = difftime(now, auction->last_bid_time);
         
-        if (time_since_last_bid > AUCTION_TIMEOUT)
-        {
+        if (time_since_last_bid > AUCTION_TIMEOUT) {
           printf("Timeout détecté pour l'enchère %u (%.0fs depuis dernière offre)\n", 
                  auction->auction_id, time_since_last_bid);
           
@@ -975,13 +981,11 @@ void *auction_monitor(void *m_send_ptr) {
 }
 
 // Fonction pour marquer une enchère comme terminée
-void mark_auction_finished(unsigned int auction_id)
-{
+void mark_auction_finished(unsigned int auction_id) {
   pthread_mutex_lock(&auction_mutex);
 
   struct Auction *auction = find_auction(auction_id);
-  if (!auction)
-  {
+  if (!auction) {
     pthread_mutex_unlock(&auction_mutex);
     return;
   }
@@ -995,23 +999,19 @@ void mark_auction_finished(unsigned int auction_id)
 }
 
 // Fonction pour créer une enchère avec un ID spécifique (pour la synchronisation)
-unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_price, unsigned int specified_id)
-{
+unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_price, unsigned int specified_id) {
   pthread_mutex_lock(&auction_mutex);
 
   // Vérifier que creator est valide
-  if (!creator)
-  {
+  if (!creator) {
     fprintf(stderr, "Erreur: Créateur invalide\n");
     pthread_mutex_unlock(&auction_mutex);
     return 0;
   }
 
   // Vérifier si l'enchère existe déjà
-  for (int i = 0; i < auctionSys.count; i++)
-  {
-    if (auctionSys.auctions[i].auction_id == specified_id)
-    {
+  for (int i = 0; i < auctionSys.count; i++) {
+    if (auctionSys.auctions[i].auction_id == specified_id) {
       // L'enchère existe déjà, on ne fait rien
       printf("L'enchère %u existe déjà, synchronisation ignorée\n", specified_id);
       pthread_mutex_unlock(&auction_mutex);
@@ -1020,13 +1020,11 @@ unsigned int init_auction_with_id(struct Pair *creator, unsigned int initial_pri
   }
 
   // Vérifier si nous avons besoin d'augmenter la capacité
-  if (auctionSys.count >= auctionSys.capacity)
-  {
+  if (auctionSys.count >= auctionSys.capacity) {
     size_t new_capacity = auctionSys.capacity * 2;
     struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
 
-    if (!new_auctions)
-    {
+    if (!new_auctions) {
       perror("Échec de la réallocation du tableau d'enchères");
       pthread_mutex_unlock(&auction_mutex);
       return 0;

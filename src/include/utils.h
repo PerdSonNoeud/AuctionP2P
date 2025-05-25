@@ -4,6 +4,16 @@
 #include "message.h"
 
 /**
+ * @brief Count the number of digits in an unsigned integer
+ *
+ * This function counts the number of digits in a given unsigned integer.
+ *
+ * @param n The unsigned integer to count digits for
+ * @return The number of digits in the integer
+ */
+int nbDigits(int n);
+
+/**
  * @brief Count the size of the buffer we need to allocate
  *
  * This function calculates the size of the buffer needed to store

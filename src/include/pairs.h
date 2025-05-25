@@ -20,9 +20,11 @@ struct PairSystem {
   struct Pair *pairs;         // Array of peers
   int count;                  // Current number of peers
   int capacity;               // Maximum capacity of the peers array
+
   unsigned short my_id;       // Local peer identifier
   struct in6_addr my_ip;      // Local peer IPv6 address
   unsigned short my_port;     // Local peer communication port
+
   char liaison_addr[46];      // Multicast liaison address
   int liaison_port;           // Multicast liaison port
   char auction_addr[46];      // Multicast auction address
