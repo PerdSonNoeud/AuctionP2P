@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <dirent.h>
+#include <unistd.h> // Pour getpid()
 
 int nbDigits (int n) {
   if (n == 0) return 1;
@@ -58,7 +60,15 @@ int get_buffer_size(struct message *msg) {
     }
   }
 
-  // TODO : NUMV, PRIX
+  if (msg->code == CODE_NOUVELLE_VENTE || msg->code == CODE_ENCHERE ||
+      msg->code == CODE_ENCHERE_SUPERVISEUR || msg->code == CODE_FIN_VENTE_WARNING ||
+      msg->code == CODE_FIN_VENTE || msg->code == CODE_REFUS_PRIX) {
+    size += nbDigits(msg->numv) + sizeof(char); // For NUMV + separator
+    size += nbDigits(msg->prix) + sizeof(char); // For PRIX + separator
+  } else if (msg->code == CODE_ANNUL_SUPERVISEUR || msg->code == CODE_ANNUL_DEMANDE) {
+    size += nbDigits(msg->numv) + sizeof(char); // For NUMV + separator
+  }
+
   size += 1; // +1 for ending null character
   return size;
 }
@@ -68,6 +78,14 @@ int message_to_buffer(struct message *msg, char *buffer, int buffer_size) {
     perror("Error: msg is NULL");
     return -1;
   }
+
+  if (buffer == NULL) {
+    perror("Error: buffer is NULL");
+    return -1;
+  }
+
+  // Initialiser le buffer
+  memset(buffer, 0, buffer_size);
 
   // Fill the buffer with the serialized data
   int offset = 0;
@@ -115,7 +133,15 @@ int message_to_buffer(struct message *msg, char *buffer, int buffer_size) {
     }
   }
 
-  // TODO : NUMV, PRIX
+  // Add auction-specific fields if needed
+  if (msg->code == CODE_NOUVELLE_VENTE || msg->code == CODE_ENCHERE ||
+      msg->code == CODE_ENCHERE_SUPERVISEUR || msg->code == CODE_FIN_VENTE_WARNING ||
+      msg->code == CODE_FIN_VENTE || msg->code == CODE_REFUS_PRIX) {
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%u", msg->numv);
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%u", msg->prix);
+  } else if (msg->code == CODE_ANNUL_SUPERVISEUR || msg->code == CODE_ANNUL_DEMANDE) {
+    offset += snprintf(buffer + offset, buffer_size - offset, "|%u", msg->numv);
+  }
   return 0;
 }
 
@@ -132,9 +158,22 @@ int buffer_to_message(struct message *msg, char *buffer) {
     }
   }
 
-  // Initialize pointers to NULL to avoid memory issues
+  // Initialize fields to defaults
+  msg->code = 0;
+  msg->id = 0;
+  msg->lmess = 0;
   msg->mess = NULL;
+  msg->lsig = 0;
   msg->sig = NULL;
+  memset(&msg->ip, 0, sizeof(struct in6_addr));
+  msg->port = 0;
+  memset(msg->cle, 0, sizeof(msg->cle));
+  msg->numv = 0;
+  msg->prix = 0;
+  msg->nb = 0;
+
+  // Debug mode - désactivé pour réduire la verbosité
+  // printf("Analyse du buffer: '%s'\n", buffer);
 
   // Copy the buffer to avoid modifying the original
   char *buffer_copy = strdup(buffer);
@@ -142,7 +181,6 @@ int buffer_to_message(struct message *msg, char *buffer) {
     perror("Error: strdup failed");
     return -1;
   }
-  printf("      buffer : [%s]\n", buffer_copy);
 
   char *token;
   char *saveptr;
@@ -177,7 +215,6 @@ int buffer_to_message(struct message *msg, char *buffer) {
       return -1;
     }
     msg->lmess = (uint8_t) atoi(token);
-
     // Extract MESS
     token = strtok_r(NULL, SEPARATOR, &saveptr);
     if (token == NULL) {
@@ -194,6 +231,16 @@ int buffer_to_message(struct message *msg, char *buffer) {
       }
       strncpy(msg->mess, token, msg->lmess);
       msg->mess[msg->lmess] = '\0';
+    } else if (strlen(token) > 0) {
+      // Si LMESS est 0 mais qu'il y a un message, on l'affecte quand même
+      msg->lmess = strlen(token);
+      msg->mess = malloc(msg->lmess + 1);
+      if (msg->mess == NULL) {
+        perror("Error: malloc failed for mess");
+        free(buffer_copy);
+        return -1;
+      }
+      strcpy(msg->mess, token);
     }
 
     // Extract LSIG
@@ -224,6 +271,17 @@ int buffer_to_message(struct message *msg, char *buffer) {
       }
       strncpy(msg->sig, token, msg->lsig);
       msg->sig[msg->lsig] = '\0';
+    } else if (strlen(token) > 0) {
+      // Si LSIG est 0 mais qu'il y a une signature, on l'affecte quand même
+      msg->lsig = strlen(token);
+      msg->sig = malloc(msg->lsig + 1);
+      if (msg->sig == NULL) {
+        perror("Error: malloc failed for sig");
+        free(buffer_copy);
+        if (msg->mess) free(msg->mess);
+        return -1;
+      }
+      strcpy(msg->sig, token);
     }
   }
 
@@ -314,7 +372,34 @@ int buffer_to_message(struct message *msg, char *buffer) {
     }
   }
 
-  // TODO : NUMV, PRIX
+  if (msg->code == CODE_NOUVELLE_VENTE || msg->code == CODE_ENCHERE ||
+      msg->code == CODE_ENCHERE_SUPERVISEUR || msg->code == CODE_FIN_VENTE_WARNING ||
+      msg->code == CODE_FIN_VENTE || msg->code == CODE_REFUS_PRIX) {
+    // Extract NUMV
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
+    if (token == NULL) {
+      // Pas d'erreur critique si NUMV est manquant
+      printf("Warning: missing NUMV field\n");
+    } else {
+      msg->numv = (uint32_t)atoi(token);
+      // Extract PRIX
+      token = strtok_r(NULL, SEPARATOR, &saveptr);
+      if (token == NULL) {
+        // Pas d'erreur critique si PRIX est manquant
+        printf("Warning: missing PRIX field\n");
+      } else {
+        msg->prix = (uint32_t)atoi(token);
+      }
+    }
+  } else if (msg->code == CODE_ANNUL_SUPERVISEUR || msg->code == CODE_ANNUL_DEMANDE) {
+    token = strtok_r(NULL, SEPARATOR, &saveptr);
+    if (token == NULL) {
+      // Pas d'erreur critique si NUMV est manquant
+      printf("Warning: missing NUMV field\n");
+    } else {
+      msg->numv = (uint32_t)atoi(token);
+    }
+  }
   // Release memory
   free(buffer_copy);
   return 0;

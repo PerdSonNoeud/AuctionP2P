@@ -85,19 +85,6 @@ int setup_client_socket(const char *addr, int port);
 int send_multicast(int sock, const char *addr, int port, const void *data, size_t len);
 
 /**
- * @brief Send data directly to a specific address (unicast)
- *
- * Send the specified data to the given sockaddr_in6 address.
- *
- * @param sock Socket to use for sending
- * @param dest_addr Destination address (sockaddr_in6 structure)
- * @param data Pointer to the data to send
- * @param len Length of the data to send
- * @return Number of bytes sent on success, negative value on error
- */
-int send_unicast(int sock, struct sockaddr_in6 *dest_addr, const void *data, size_t len);
-
-/**
  * @brief Receive data from a multicast group
  *
  * Receive data from the configured multicast group through the given socket.

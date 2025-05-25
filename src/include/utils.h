@@ -4,6 +4,16 @@
 #include "message.h"
 
 /**
+ * @brief Count the number of digits in an unsigned integer
+ *
+ * This function counts the number of digits in a given unsigned integer.
+ *
+ * @param n The unsigned integer to count digits for
+ * @return The number of digits in the integer
+ */
+int nbDigits(int n);
+
+/**
  * @brief Count the size of the buffer we need to allocate
  *
  * This function calculates the size of the buffer needed to store
@@ -38,5 +48,13 @@ int message_to_buffer(struct message *msg, char *buffer, int buffer_size);
  * @return 0 on success, -1 on error
  */
 int buffer_to_message(struct message* msg, char *buffer);
+
+/**
+ * @brief Affiche le nombre de descripteurs de fichiers ouverts par le processus
+ * 
+ * Cette fonction affiche le nombre de descripteurs de fichiers (sockets, fichiers, etc.)
+ * actuellement ouverts par le processus.
+ */
+void print_open_files();
 
 #endif /* UTILS_H */

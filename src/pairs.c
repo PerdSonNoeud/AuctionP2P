@@ -2,6 +2,7 @@
 #include "include/sockets.h"
 #include "include/message.h"
 #include "include/utils.h"
+#include "include/auction.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,12 +11,13 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
-#define UNKNOWN_SIZE 1024 // Default size for unknown buffer sizes
 #define MAX_ATTEMPTS 3
 #define TIMEOUT 5
 
 struct PairSystem pSystem;
+extern struct AuctionSystem auctionSys;
 
 int init_pairs() {
   pSystem.pairs = malloc(10 * sizeof(struct Pair));
@@ -26,7 +28,11 @@ int init_pairs() {
 
   pSystem.count = 0;
   pSystem.capacity = 10;
-  pSystem.my_id = 1; // Default ID
+
+  // Générer un ID aléatoire entre 1 et 10000 pour éviter les conflits
+  srand(time(NULL));
+  pSystem.my_id = 1 + (rand() % 10000);
+  printf("ID généré aléatoirement: %d\n", pSystem.my_id);
 
   // Default IP address
   inet_pton(AF_INET6, "::1", &pSystem.my_ip);
