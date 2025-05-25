@@ -1,10 +1,18 @@
 #include "include/message.h"
+#include "include/utils.h"
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/crypto.h>
+#include <openssl/rsa.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
 
 void afficher_message(struct message* msg) {
     if (msg == NULL) {
@@ -60,9 +68,9 @@ int message_set_mess(struct message* msg, const char* mess) {
   return 0;
 }
 
-int message_set_sig(struct message* msg, const char* sig) {
-  if(msg == NULL || sig == NULL) {
-    perror("Message ou signature est NULL");
+int message_set_sig(struct message* msg) {
+  if(msg == NULL) {
+    perror("Message est NULL");
     return -1;
   }
 
@@ -70,15 +78,28 @@ int message_set_sig(struct message* msg, const char* sig) {
   if(msg->sig != NULL) {
     free(msg->sig);
   }
+  
+  // retrieve public and private keys (assumed to be in PEM format)
+  EVP_PKEY *pubkey = convert_public_key_to_evp_pkey("pub-ed25519-key.pem");
+  EVP_PKEY *privkey = convert_private_key_to_evp_pkey("priv-ed25519-key.pem") ;
 
-  // Allocate memory for the new signature
-  msg->lsig = strlen(sig);
-  msg->sig = malloc(msg->lsig + 1); // +1 for null terminator
-  if(msg->sig == NULL) {
+  /* signature */
+  if (sign(privkey, (unsigned char*)msg->mess, (unsigned char**)&msg->sig, (size_t*)&msg->lsig) != 1) {
     perror("Allocation ratée pour sig");
+    EVP_PKEY_free(privkey);
+    EVP_PKEY_free(pubkey);
     return -1;
   }
-  strcpy(msg->sig, sig);
+
+  if (verify(pubkey, (unsigned char*)msg->mess, (unsigned char*)msg->sig, (size_t)msg->lsig) != 1) {
+    perror("Allocation ratée pour sig");
+    EVP_PKEY_free(privkey);
+    EVP_PKEY_free(pubkey);
+    return -1;
+  }
+
+  EVP_PKEY_free(privkey);
+  EVP_PKEY_free(pubkey);
   return 0;
 }
 

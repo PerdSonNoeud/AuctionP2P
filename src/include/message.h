@@ -77,10 +77,9 @@ int message_set_mess(struct message* msg, const char* mess);
  * @brief Set the signature in the message structure
  *
  * @param msg Pointer to the message to modify
- * @param sig The signature to set
  * @return 0 on success, -1 on error
  */
-int message_set_sig(struct message* msg, const char* sig);
+int message_set_sig(struct message* msg);
 
 /**
  * @brief Set the ip address in the message structure

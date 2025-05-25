@@ -37,6 +37,10 @@ int init_pairs() {
   strcpy(pSystem.auction_addr, "ff02::2");
   pSystem.auction_port = 8081;
 
+  // Generate keys that will be used for signing messages
+  // Ensure the keys are generated only once
+  generate_ed25519_key("pub-ed25519-key.pem", "priv-ed25519-key.pem");
+
   return 0;
 }
 
