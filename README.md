@@ -83,7 +83,7 @@ git clone https://moule.informatique.univ-paris-diderot.fr/jinc/projet-reseau-20
 cd projet-reseau-2024-2025
 ```
 
-2.  **Compiler le projet**
+2. **Compiler le projet**
 
 ```bash
 make clean
