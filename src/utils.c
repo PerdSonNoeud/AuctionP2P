@@ -6,6 +6,168 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <unistd.h> // Pour getpid()
+#include <openssl/pem.h>
+
+
+EVP_PKEY *convert_private_key_to_evp_pkey(char *privkey) {
+	EVP_PKEY *pkey = NULL;
+	FILE *fp = fopen(privkey, "r");
+	if(fp == NULL){
+		perror("fopen");
+		return NULL;
+	}
+	
+	PEM_read_PrivateKey(fp, &pkey, NULL, NULL);    
+	if (pkey == NULL) {
+		fprintf(stderr, "erreur: PEM_read_PrivateKey\n");
+		return NULL;
+	}
+
+	fclose(fp);
+	return pkey; 
+}
+
+
+EVP_PKEY *convert_public_key_to_evp_pkey(char *pubkey) {
+	EVP_PKEY *pkey = NULL; 
+	FILE *fp = fopen(pubkey, "r");
+	if(fp == NULL){
+		perror("fopen");
+		return NULL;
+	}
+	
+	PEM_read_PUBKEY(fp, &pkey, NULL, NULL);   
+	if (pkey == NULL) {
+		fprintf(stderr, "erreur: PEM_read_PUBKEY\n");
+		return NULL;
+	}
+
+	fclose(fp);
+	return pkey; 
+}
+
+int generate_ed25519_key(char* public_key_name, char* private_key_name){
+	EVP_PKEY *pkey = NULL;
+	EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_ED25519, NULL);
+	int ret = 0;
+	FILE *bp_public = NULL;
+	FILE* bp_private = NULL;
+
+	// initialise le contexte pour la génération d'une paire de clés
+	if(EVP_PKEY_keygen_init(pctx) <= 0){
+		fprintf(stderr, "erreur EVP_PKEY_keygen_init\n");
+		return ret;
+	}
+
+	// engendre une paire de clés ED25519
+	EVP_PKEY_generate(pctx, &pkey);
+	if(pkey == NULL) {
+		fprintf(stderr, "erreur EVP_PKEY_keygen\n");
+		goto err;
+	}
+
+	// sauvegarde la clé publique
+	bp_public = fopen(public_key_name, "w+");
+	ret = PEM_write_PUBKEY(bp_public, pkey);
+	fclose(bp_public);
+	if(ret != 1){
+		fprintf(stderr, "erreur PEM_write_PUBKEY\n");
+		goto err;
+	}
+	
+	// sauvegarde la clé privée 
+	bp_private = fopen(private_key_name, "w+");
+	ret = PEM_write_PrivateKey(bp_private, pkey, NULL, NULL, 0, NULL, NULL);
+	fclose(bp_private);
+	if(ret != 1){
+		fprintf(stderr, "PEM_write_PrivateKey error\n");
+		goto err;
+	}
+
+	ret = 1;
+
+ err:
+	EVP_PKEY_free(pkey);
+	EVP_PKEY_CTX_free(pctx);
+	return ret;
+}
+
+int sign(EVP_PKEY *privkey, unsigned char *msg, unsigned char **sig, size_t *slen) {
+	EVP_MD_CTX *mdctx = NULL;
+	int ret = 0, msg_len = strlen((char *) msg);
+	
+	*sig = NULL;
+
+	/* crée le Message Digest Context */
+	if(!(mdctx = EVP_MD_CTX_create())){
+		fprintf(stderr, "erreur EVP_MD_CTX_create\n");
+		goto err;
+	}
+
+	/* initialise l'operation DigestSign (hachage avec signature) 
+	 * avec la clé privée.
+	 * 3eme param (fonction de hachage) doit être NULL pour une clé ED25519
+	 * puisque celle-ci utilise SHA-512 (pas de choix) 
+	 * si RSA, fonction de hachage peut être EVP_sha256() */
+	if(1 != EVP_DigestSignInit(mdctx, NULL, NULL, NULL, privkey)){
+		fprintf(stderr, "erreur EVP_DigestSignInit\n");
+		goto err;
+	} 
+	
+	/* appel une 1ère fois de EVP_DigestSign avec le paramètre 
+	 * sig à NULL afin d'obtenir la longueur de la signature */
+	if(1 != EVP_DigestSign(mdctx, NULL, slen, msg, msg_len)) {
+		fprintf(stderr, "erreur EVP_DigestSign\n");
+		goto err;
+	} 
+
+	/* alloue la mémoire pour la signature */ 
+	if(!(*sig = malloc(sizeof(unsigned char) * (*slen)))) {
+		fprintf(stderr, "erreur malloc\n");
+		goto err;
+	} 
+
+	/* obtention de la signature */
+	if(1 != EVP_DigestSign(mdctx, *sig, slen, msg, msg_len)) {
+		fprintf(stderr, "erreur EVP_DigestSign\n");
+		goto err;
+	} 
+
+	/* Succès */
+	ret = 1;
+	printf("message : %s\n", msg);
+	EVP_MD_CTX_free(mdctx);
+	return 1;
+ 
+ err:
+	if(ret != 1)
+		fprintf(stderr, "erreur dans sign()\n");
+		 
+	/* nettoyage mémoire */
+	if(*sig && !ret) OPENSSL_free(*sig); // = free(*sig);
+	if(mdctx) EVP_MD_CTX_free(mdctx); //EVP_MD_CTX_destroy(mdctx);
+
+	return 0;
+}
+
+int verify(EVP_PKEY *pubkey, unsigned char *msg, unsigned char *sig, size_t slen) {
+	EVP_MD_CTX *mdctx;
+	int ret = -1;
+	
+	if(!(mdctx = EVP_MD_CTX_create()))  return 0; //erreur
+
+	if(1 != EVP_DigestVerifyInit(mdctx, NULL, NULL, NULL, pubkey)) {
+		perror("erreur EVP_DigestVerifyInit");
+	}
+
+	if(1 == EVP_DigestVerify(mdctx, sig, slen, msg, strlen((char *) msg)))
+		printf("signature ok\n");
+	else {
+		printf("document corrompu\n");
+		return 0;
+	}	
+	return ret;
+}
 
 int nbDigits (int n) {
   if (n == 0) return 1;
