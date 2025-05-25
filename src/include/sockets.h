@@ -26,6 +26,51 @@ int setup_multicast_receiver(const char *addr, int port);
 int setup_multicast_sender();
 
 /**
+ * @brief Set up a unicast receiver socket
+ *
+ * Creates and configures a socket to receive unicast packets
+ * on the specified port.
+ *
+ * @param port Port number to bind to
+ * @return Socket file descriptor on success, negative value on error
+ */
+int setup_unicast_receiver(int port);
+
+/**
+ * @brief Set up a unicast sender socket
+ *
+ * Creates and configures a socket for unicast communication.
+ * The socket is configured in non-blocking mode.
+ *
+ * @param s_addr Address to bind to (IPv6 address)
+ * @param port Port number to bind to
+ * @return Socket file descriptor on success, negative value on error
+ */
+int setup_unicast_sender(const char *s_addr, int port);
+
+/**
+ * @brief Set up a unicast TCP socket
+ *
+ * Creates and configures a socket for unicast TCP communication.
+ * The socket is configured in listening mode ready to accept connections.
+ *
+ * @param port Port number to bind to
+ * @return Socket file descriptor on success, negative value on error
+ */
+int setup_server_socket(int port);
+
+/**
+ * @brief Set up a client socket for unicast communication
+ *
+ * Creates and configures a socket to connect to a specified address and port.
+ *
+ * @param addr Address to connect to
+ * @param port Port number to connect to
+ * @return Socket file descriptor on success, negative value on error
+ */
+int setup_client_socket(const char *addr, int port);
+
+/**
  * @brief Send data to a multicast group
  *
  * Send the specified data to the given multicast group and port.

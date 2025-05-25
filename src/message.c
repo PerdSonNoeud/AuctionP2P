@@ -14,7 +14,7 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
-void afficher_message(struct message* msg) {
+void print_message(struct message* msg) {
     if (msg == NULL) {
         printf("Le Message est NULL\n");
         return;
@@ -129,6 +129,46 @@ int message_set_cle(struct message* msg, const char* cle) {
   }
   strncpy(msg->cle, cle, sizeof(msg->cle) - 1);
   msg->cle[sizeof(msg->cle) - 1] = '\0'; // Ensure null termination
+  return 0;
+}
+
+int message_set_nb(struct message *msg, int nb) {
+  if(msg == NULL) {
+    perror("Message est NULL");
+    return -1;
+  }
+  msg->nb = nb;
+  msg->info = malloc(nb * sizeof(struct info));
+  return 0;
+}
+
+int init_info(struct info *info, int id, struct in6_addr ip, uint16_t port) {
+  if(info == NULL) {
+    perror("Info est NULL");
+    return -1;
+  }
+  info->id = 0; // Initialize id
+  if (id > 0) {
+    info->id = id; // Set id if valid
+  }
+  info->ip = in6addr_any; // Initialize IP to any address
+  if (memcmp(&ip, &in6addr_any, sizeof(struct in6_addr)) != 0) {
+    info->ip = ip; // Set IP if valid
+  }
+  info->port = 0; // Initialize port to 0
+  if (port > 0) {
+    info->port = port; // Set port if valid
+  }
+  // TODO : Handle cle
+  return 0;
+}
+
+int message_set_info(struct message *msg, int index, struct info *info) {
+  if(msg == NULL || info == NULL || index < 0) {
+    perror("Message, info ou index invalide");
+    return -1;
+  }
+  msg->info[index] = *info; // Copy the info structure
   return 0;
 }
 

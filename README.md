@@ -1,93 +1,191 @@
-# AuctionP2P
+# AuctionP2P - Système d'enchères pair-à-pair
 
+Un système d'enchères distribué implémenté en C utilisant IPv6 et les protocoles UDP/TCP pour la communication peer-to-peer.
 
+## 📋 Table des matières
 
-## Getting started
+- [Aperçu](#-aperçu)
+- [Fonctionnalités](#-fonctionnalités)
+- [Architecture](#️-architecture)
+- [Prérequis](#-prérequis)
+- [Installation](#-installation)
+- [Utilisation](#-utilisation)
+- [Protocole de communication](#-protocole-de-communication)
+- [Structure du projet](#-structure-du-projet)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## 🎯 Aperçu
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+AuctionP2P est un système d'enchères décentralisé où chaque participant (pair) peut :
 
-## Add your files
+- Rejoindre un réseau P2P existant ou créer un nouveau réseau
+- Créer des enchères avec un prix initial
+- Participer aux enchères en proposant des offres
+- Superviser le processus de validation des enchères
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+Le système utilise IPv6 pour la communication réseau et implémente un protocole de consensus pour assurer la cohérence des données entre tous les pairs.
 
+## ✨ Fonctionnalités
+
+### Fonctionnalités implémentées
+
+- ✅ **Gestion des pairs** : Connexion/déconnexion au réseau P2P
+- ✅ **Communication multicast** : Découverte de réseau et annonces
+- ✅ **Communication unicast** : Échanges directs entre pairs
+- ✅ **Gestion des IDs** : Attribution d'identifiants uniques
+- ✅ **Système d'enchères basique** : Création et participation aux enchères
+- ✅ **Support IPv6** : Communication moderne sur réseau
+
+## 🏗️ Architecture
+
+Le système utilise une architecture modulaire :
+
+```bash
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Application   │    │   Enchères      │    │   Pairs P2P     │
+│   (main.c)      │◄──►│   (auction.c)   │◄──►│   (pairs.c)     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 ▼
+                    ┌─────────────────┐    ┌─────────────────┐
+                    │   Messages      │    │   Sockets       │
+                    │   (message.c)   │◄──►│   (sockets.c)   │
+                    └─────────────────┘    └─────────────────┘
+                                 ▲
+                    ┌─────────────────┐
+                    │   Utilitaires   │
+                    │   (utils.c)     │
+                    └─────────────────┘
 ```
-cd existing_repo
-git remote add origin https://moule.informatique.univ-paris-diderot.fr/jinc/projet-reseau-2024-2025.git
-git branch -M main
-git push -uf origin main
+
+### Adresses réseau
+
+- **Adresse de liaison** : `ff12::` port `8080` (découverte de pairs)
+- **Adresse d'enchères** : `ff12::` port `8081` (communications d'enchères)
+- **Adresses personnelles** : IPv6 + port TCP/UDP par pair
+
+## 🔧 Prérequis
+
+- **Système d'exploitation** : Linux (testé sur Ubuntu/Debian)
+- **Compilateur** : GCC avec support C17
+- **Bibliothèques** :
+  - pthread (threads POSIX)
+  - Bibliothèques réseau standard (socket, netinet, arpa)
+- **Interface réseau** : `eth0` (modifiable dans le code)
+
+## 📦 Installation
+
+1. **Cloner le projet**
+
+```bash
+git clone https://moule.informatique.univ-paris-diderot.fr/jinc/projet-reseau-2024-2025.git
+cd projet-reseau-2024-2025
 ```
 
-## Integrate with your tools
+2. **Compiler le projet**
 
-- [ ] [Set up project integrations](https://moule.informatique.univ-paris-diderot.fr/jinc/projet-reseau-2024-2025/-/settings/integrations)
+```bash
+make clean
+make
+```
 
-## Collaborate with your team
+3. **Exécuter le programme**
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```bash
+make run
+# ou directement
+./bin/AuctionP2P
+```
 
-## Test and Deploy
+## 🚀 Utilisation
 
-Use the built-in continuous integration in GitLab.
+### Démarrage
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+1. Lancez le programme sur plusieurs machines du réseau
+2. Le premier utilisateur créera automatiquement un nouveau réseau P2P
+3. Les suivants rejoindront le réseau existant
 
-***
+### Interface utilisateur
 
-# Editing this README
+```bash
+===== Bienvenue dans le système P2P =====
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Recherche de système P2P existant...
+  Entrez votre ID souhaité (laissez vide pour défaut 1): 42
+  Tentative de connexion avec ID=42...
 
-## Suggestions for a good README
+Commandes disponibles :
+  1 - Créer une enchère
+  2 - Faire une offre
+  3 - Afficher les enchères actives
+  q - Quitter le programme
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+### Exemple d'utilisation
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+# Terminal 1 (Premier pair - crée le réseau)
+./bin/AuctionP2P
+> Réseau P2P non trouvé, création d\'un nouveau réseau...
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+# Terminal 2 (Deuxième pair - rejoint le réseau)
+./bin/AuctionP2P
+> Réseau P2P trouvé, vous êtes maintenant connecté.
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## 📡 Protocole de communication
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### Codes de messages principaux
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+| Code | Type | Description |
+|------|------|-------------|
+| 3 | `CODE_DEMANDE_LIAISON` | Demande pour rejoindre le système |
+| 4 | `CODE_REPONSE_LIAISON` | Réponse avec adresse personnelle |
+| 5 | `CODE_INFO_PAIR` | Envoi d'informations de pair |
+| 6 | `CODE_INFO_PAIR_BROADCAST` | Diffusion d'informations de pair |
+| 7 | `CODE_INFO_SYSTEME` | Informations système (enchères + pairs) |
+| 8 | `CODE_NOUVELLE_VENTE` | Lancement d'une nouvelle enchère |
+| 9 | `CODE_ENCHERE` | Offre d'un pair |
+| 13 | `CODE_QUIT_SYSTEME` | Quitter le système |
+| 50/51 | `CODE_ID_ACCEPTED/CHANGED` | Validation/changement d'ID |
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### Format des messages
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```bash
+Connexion : CODE=3
+Réponse   : CODE=4|ID|IP|PORT
+Info pair : CODE=5|ID|IP|PORT|CLE
+Système   : CODE=7|ID|IP|PORT|NB|[ID|IP|PORT|CLE]...
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## 📁 Structure du projet
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+projet-reseau-2024-2025/
+├── src/
+│   ├── main.c              # Point d'entrée principal
+│   ├── pairs.c             # Gestion des pairs P2P
+│   ├── auction.c           # Système d'enchères
+│   ├── message.c           # Structures de messages
+│   ├── sockets.c           # Communication réseau
+│   ├── utils.c             # Utilitaires (sérialisation)
+│   ├── adr.txt             # Formats de messages
+│   └── include/
+│       ├── pairs.h
+│       ├── auction.h
+│       ├── message.h
+│       ├── sockets.h
+│       └── utils.h
+├── obj/                    # Fichiers objets compilés
+├── bin/                    # Exécutable final
+├── Makefile               # Configuration de compilation
+└── README.md              # Documentation
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## 👥 Contributeurs
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+- **Développeurs principaux** : JIN Cristophe, PIGET Mathéo, MELILA Yanis
+- **Contexte** : Projet universitaire L3 Informatique - Programmation Réseau
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+---
