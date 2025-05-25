@@ -5,9 +5,8 @@ Un système d'enchères distribué implémenté en C utilisant IPv6 et les proto
 ## 📋 Table des matières
 
 - [Aperçu](#-aperçu)
-
 - [Fonctionnalités](#-fonctionnalités)
-- [Architecture](#-architecture)
+- [Architecture](#️-architecture)
 - [Prérequis](#-prérequis)
 - [Installation](#-installation)
 - [Utilisation](#-utilisation)
@@ -40,7 +39,7 @@ Le système utilise IPv6 pour la communication réseau et implémente un protoco
 
 Le système utilise une architecture modulaire :
 
-```
+```bash
 
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Application   │    │   Enchères      │    │   Pairs P2P     │
@@ -84,7 +83,7 @@ git clone https://moule.informatique.univ-paris-diderot.fr/jinc/projet-reseau-20
 cd projet-reseau-2024-2025
 ```
 
-2. **Compiler le projet**
+2.  **Compiler le projet**
 
 ```bash
 make clean
@@ -109,7 +108,7 @@ make run
 
 ### Interface utilisateur
 
-```
+```bash
 ===== Bienvenue dans le système P2P =====
 
 Recherche de système P2P existant...
@@ -153,7 +152,7 @@ Commandes disponibles :
 
 ### Format des messages
 
-```
+```bash
 Connexion : CODE=3
 Réponse   : CODE=4|ID|IP|PORT
 Info pair : CODE=5|ID|IP|PORT|CLE
@@ -162,7 +161,7 @@ Système   : CODE=7|ID|IP|PORT|NB|[ID|IP|PORT|CLE]...
 
 ## 📁 Structure du projet
 
-```
+```bash
 projet-reseau-2024-2025/
 ├── src/
 │   ├── main.c              # Point d'entrée principal
