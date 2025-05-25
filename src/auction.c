@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include "include/auction.h"
 #include "include/sockets.h"
 #include "include/message.h"
@@ -251,18 +252,15 @@ int create_auction(int m_send) {
 }
 
 unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
-  pthread_mutex_lock(&auction_mutex);
-
   printf("Initialisation d'une nouvelle enchère...\n");
 
   // Vérifier que creator est valide
-  if (!creator)
-  {
+  if (!creator) {
     fprintf(stderr, "Erreur: Créateur invalide\n");
-    pthread_mutex_unlock(&auction_mutex);
     return 0;
   }
 
+  pthread_mutex_lock(&auction_mutex);
   // Chercher un slot libre (enchère terminée) avant d'en créer un nouveau
   int free_slot = -1;
   for (int i = 0; i < auctionSys.count; i++)
@@ -276,23 +274,17 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
   }
 
   struct Auction *new_auction;
-  
-  if (free_slot >= 0)
-  {
+  if (free_slot >= 0) {
     // Réutiliser un slot existant
     new_auction = &auctionSys.auctions[free_slot];
     memset(new_auction, 0, sizeof(struct Auction));
-  }
-  else
-  {
+  } else {
     // Vérifier si nous avons besoin d'augmenter la capacité
-    if (auctionSys.count >= auctionSys.capacity)
-    {
+    if (auctionSys.count >= auctionSys.capacity) {
       size_t new_capacity = auctionSys.capacity * 2;
       struct Auction *new_auctions = realloc(auctionSys.auctions, new_capacity * sizeof(struct Auction));
 
-      if (!new_auctions)
-      {
+      if (!new_auctions) {
         perror("realloc a échoué");
         pthread_mutex_unlock(&auction_mutex);
         return 0;
@@ -302,8 +294,7 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
       auctionSys.capacity = new_capacity;
 
       // Initialiser les nouveaux éléments à zéro
-      memset(&auctionSys.auctions[auctionSys.count], 0,
-             (new_capacity - auctionSys.count) * sizeof(struct Auction));
+      memset(&auctionSys.auctions[auctionSys.count], 0, (new_capacity - auctionSys.count) * sizeof(struct Auction));
     }
 
     // Ajouter la nouvelle enchère à la fin du tableau
@@ -311,8 +302,7 @@ unsigned int init_auction(struct Pair *creator, unsigned int initial_price) {
     auctionSys.count++;
   }
 
-  printf("Capacité actuelle: %d, Nombre d'enchères: %d\n",
-         auctionSys.capacity, auctionSys.count);
+  printf("Capacité actuelle: %d, Nombre d'enchères: %d\n", auctionSys.capacity, auctionSys.count);
 
   // Générer un nouvel ID d'enchère
   unsigned int auction_id = generate_auction_id();
@@ -514,17 +504,16 @@ int handle_bid(int m_send, struct message *msg) {
     }
   }
 
+  pthread_mutex_unlock(&auction_mutex);
   return 0;
 }
 
 // Fonction pour gérer les enchères relayées par le superviseur (CODE=10)
 int handle_supervisor_bid(struct message *msg) {
-  printf("aaaaa\n");
   pthread_mutex_lock(&auction_mutex);
-  printf("après lock\n");
+  fflush(stdout);
 
   struct Auction *auction = find_auction(msg->numv);
-  printf("après find\n");
   if (!auction) {
     // Si l'enchère n'existe pas dans notre système, on l'ajoute
     printf("Réception d'une enchère pour une vente inconnue (ID=%u). Création de l'enchère.\n", msg->numv);
@@ -566,8 +555,6 @@ int handle_supervisor_bid(struct message *msg) {
     pthread_mutex_unlock(&auction_mutex);
     return 0;
   }
-  printf("après gros if\n");
-
   // Vérifier si le prix proposé est supérieur au prix actuel
   if (msg->prix <= auction->current_price) {
     printf("Prix proposé (%u) inférieur ou égal au prix actuel (%u). Enchère ignorée.\n",
@@ -575,7 +562,6 @@ int handle_supervisor_bid(struct message *msg) {
     pthread_mutex_unlock(&auction_mutex);
     return 0;
   }
-  printf("prix ok\n");
 
   // Mettre à jour les données de l'enchère
   unsigned int ancien_prix = auction->current_price;
@@ -589,7 +575,6 @@ int handle_supervisor_bid(struct message *msg) {
          auction->auction_id, ancien_prix, msg->prix, ancien_proposant, msg->id);
 
   pthread_mutex_unlock(&auction_mutex);
-  printf("fin\n");
   return 0;
 }
 
