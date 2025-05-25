@@ -128,7 +128,7 @@ Commandes disponibles :
 ```bash
 # Terminal 1 (Premier pair - crée le réseau)
 ./bin/AuctionP2P
-> Réseau P2P non trouvé, création d'un nouveau réseau...
+> Réseau P2P non trouvé, création d\'un nouveau réseau...
 
 # Terminal 2 (Deuxième pair - rejoint le réseau)
 ./bin/AuctionP2P
