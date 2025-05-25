@@ -31,10 +31,10 @@ extern pthread_mutex_t auction_mutex;   // Declare auction_mutex as external
  * @return 0 on success, 1 if no network was found, negative value on error
  */
 int join_network() {
-  printf("  Tentative de connexion à un réseau P2P existant...\n");
+  printf("  ➤ Tentative de connexion à un réseau P2P existant...\n");
 
   // Customize ID (optional)
-  printf("  Entrez votre ID souhaité (laissez vide pour défaut %d): ",
+  printf("  📝 Entrez votre ID souhaité (laissez vide pour défaut %d): ",
          pSystem.my_id);
   char id_str[10];
   if (fgets(id_str, sizeof(id_str), stdin) != NULL) {
@@ -45,10 +45,10 @@ int join_network() {
     }
   }
 
-  printf("  Tentative de connexion avec ID=%d...\n", pSystem.my_id);
+  printf("  🔍 Tentative de connexion avec ID=%d...\n", pSystem.my_id);
   // Try to join the P2P network
   if (join_pairs(m_send) < 0) {
-    printf("  Aucun réseau P2P trouvé.\n");
+    printf("  ℹ️  Aucun réseau P2P trouvé.\n");
     return 1;
   }
   return 0;
@@ -62,7 +62,7 @@ int join_network() {
  */
 void recv_auction_info() {
   // Attendre explicitement les messages d'enchères pendant quelques secondes
-  printf("Attente des informations d'enchères en cours...\n");
+  printf("🔄 Attente des informations d'enchères en cours...\n");
   time_t start_time = time(NULL);
   struct sockaddr_in6 sender;
 
@@ -90,7 +90,7 @@ void recv_auction_info() {
     }
   }
 
-  printf("Synchronisation terminée.\n");
+  printf("✅ Synchronisation terminée.\n");
 }
 
 /**
@@ -99,12 +99,14 @@ void recv_auction_info() {
  * Displays the current peer ID, address, and port.
  */
 void sync_auctions() {
-  printf("\n=== Synchronisation des enchères ===\n");
+  printf("\n╭─────────────────────────────────────╮\n");
+  printf("│    🔄 Synchronisation des enchères │\n");
+  printf("╰─────────────────────────────────────╯\n");
   int count = broadcast_all_auctions(m_send);
 
-  if (count > 0) printf("%d enchères diffusées avec succès\n", count);
-  else if (count == 0) printf("Aucune enchère à synchroniser\n");
-  else printf("Erreur lors de la synchronisation des enchères\n");
+  if (count > 0) printf("✅ %d enchères diffusées avec succès\n", count);
+  else if (count == 0) printf("ℹ️  Aucune enchère à synchroniser\n");
+  else printf("❌ Erreur lors de la synchronisation des enchères\n");
 }
 
 /**
@@ -113,8 +115,15 @@ void sync_auctions() {
  * Displays the current peer ID, address, and port.
  */
 void print_commands() {
-  printf("\nCommandes disponibles :\n  1 - Créer une enchère\n  2 - Faire une offre\n"
-         "  3 - Afficher les enchères actives\n  q - Quitter le programme\n> ");
+  printf("\n╭─────────────────────────────────────────────╮\n");
+  printf("│            📋 Commandes disponibles        │\n");
+  printf("├─────────────────────────────────────────────┤\n");
+  printf("│  [1] 📝 Créer une enchère                  │\n");
+  printf("│  [2] 💰 Faire une offre                    │\n");
+  printf("│  [3] 📊 Afficher les enchères actives      │\n");
+  printf("│  [q] 🚪 Quitter le programme               │\n");
+  printf("╰─────────────────────────────────────────────╯\n");
+  printf("> ");
   fflush(stdout);
 }
 
@@ -127,45 +136,48 @@ void print_commands() {
  * @return EXIT_SUCCESS on success, EXIT_FAILURE on error
  */
 int main() {
-  printf("===== Bienvenue dans le système P2P =====\n\n");
-  printf("Recherche de système P2P existant...\n");
+  printf("╔═══════════════════════════════════════════════╗\n");
+  printf("║        🌐 Système P2P d'Enchères              ║\n");
+  printf("║             Bienvenue !                       ║\n");
+  printf("╚═══════════════════════════════════════════════╝\n\n");
+  printf("🔍 Recherche de système P2P existant...\n");
 
   // Initialize the peer system
   if (init_pairs() < 0) {
-    fprintf(stderr, "  Échec de l'initialisation du système de pairs\n");
+    fprintf(stderr, "❌ Échec de l'initialisation du système de pairs\n");
     return EXIT_FAILURE;
   }
   // Initialize the auction system
   if (init_auction_system() < 0) {
-    fprintf(stderr, "Échec de l'initialisation du système d'enchères\n");
+    fprintf(stderr, "❌ Échec de l'initialisation du système d'enchères\n");
     return EXIT_FAILURE;
   }
 
   // Configure sender socket to respond to requests
   m_send = setup_multicast_sender();
   if (m_send < 0) {
-    fprintf(stderr, "  Échec de la création du socket émetteur multicast\n");
+    fprintf(stderr, "❌ Échec de la création du socket émetteur multicast\n");
     return EXIT_FAILURE;
   }
 
   // Try to join an existing network
   int ret = join_network();
   if (ret < 0) { // Error handling
-    fprintf(stderr, "Échec de la connexion au réseau P2P\n");
+    fprintf(stderr, "❌ Échec de la connexion au réseau P2P\n");
     return EXIT_FAILURE;
   } else if (ret == 1) { // No existing network found, create a new one
-    printf("\nRéseau P2P non trouvé, création d'un nouveau réseau...\n");
+    printf("\n🆕 Réseau P2P non trouvé, création d'un nouveau réseau...\n");
   } else if (ret == 0) { // Successfully joined an existing network
-    printf("\nRéseau P2P trouvé, vous êtes maintenant connecté.\n");
+    printf("\n✅ Réseau P2P trouvé, vous êtes maintenant connecté.\n");
   } else {
-    fprintf(stderr, "Erreur lors de la connexion au réseau P2P\n");
+    fprintf(stderr, "❌ Erreur lors de la connexion au réseau P2P\n");
     return EXIT_FAILURE;
   }
 
   // Configure multicast receiver socket for connections
   m_recv = setup_multicast_receiver(pSystem.liaison_addr, pSystem.liaison_port);
   if (m_recv < 0) {
-    fprintf(stderr, "  Échec de la création du socket récepteur multicast\n");
+    fprintf(stderr, "❌ Échec de la création du socket récepteur multicast\n");
     close(m_send);
     return EXIT_FAILURE;
   }
@@ -173,7 +185,7 @@ int main() {
   // Setup server socket for TCP connections
   server_sock = setup_server_socket(pSystem.my_port);
   if (server_sock < 0) {
-    fprintf(stderr, "  Échec de la création du socket serveur TCP\n");
+    fprintf(stderr, "❌ Échec de la création du socket serveur TCP\n");
     close(m_recv);
     close(m_send);
     return EXIT_FAILURE;
@@ -182,7 +194,7 @@ int main() {
   // Configure multicast receiver socket for auctions
   auc_sock = setup_multicast_receiver(pSystem.auction_addr, pSystem.auction_port);
   if (auc_sock < 0) {
-    fprintf(stderr, "Échec de la création du socket récepteur multicast pour enchères\n");
+    fprintf(stderr, "❌ Échec de la création du socket récepteur multicast pour enchères\n");
     close(m_recv);
     close(m_send);
     close(server_sock);
@@ -218,7 +230,7 @@ int main() {
     int poll_result = poll(fds, 4, 1000); // 1 second timeout
 
     if (poll_result < 0) {
-      perror("Erreur lors de l'appel à poll");
+      perror("❌ Erreur lors de l'appel à poll");
       break;
     }
 
@@ -226,7 +238,7 @@ int main() {
     if (fds[0].revents & POLLIN) {
       int result = handle_join(m_recv, server_sock);
       if (result > 0) {
-        printf("\nDemande de connexion reçue et traitée\n");
+        printf("\n🤝 Demande de connexion reçue et traitée\n");
         print_pairs();
       }
     }
@@ -242,16 +254,16 @@ int main() {
           if (input == '1') {
             // Créer une enchère
             int result = create_auction(m_send);
-            if (result < 0) printf("Échec de la création de l'enchère. Veuillez réessayer.\n");
-            else if (result == 0) printf("Aucune enchère active pour créer une nouvelle enchère.\n");
-            else printf("Enchère créée avec succès.\n");
+            if (result < 0) printf("❌ Échec de la création de l'enchère. Veuillez réessayer.\n");
+            else if (result == 0) printf("ℹ️  Aucune enchère active pour créer une nouvelle enchère.\n");
+            else printf("✅ Enchère créée avec succès.\n");
             print_commands();
           } else if (input == '2') {
             // Faire une offre
             int result = make_bid(m_send);
-            if (result < 0) printf("Échec de l'offre. Veuillez réessayer.\n");
-            else if (result == 0) printf("Aucune enchère active pour faire une offre.\n");
-            else printf("Offre faite avec succès.\n");
+            if (result < 0) printf("❌ Échec de l'offre. Veuillez réessayer.\n");
+            else if (result == 0) printf("ℹ️  Aucune enchère active pour faire une offre.\n");
+            else printf("✅ Offre faite avec succès.\n");
             print_commands();
           } else if (input == '3') {
             // Afficher les enchères
@@ -266,12 +278,12 @@ int main() {
     if (fds[2].revents & POLLIN) {
       int client_sock = accept(server_sock, NULL, NULL);
       if (client_sock < 0) {
-        perror("Échec de l'acceptation de la connexion");
+        perror("❌ Échec de l'acceptation de la connexion");
         continue;
       }
       // Handle the new connection in a separate thread or process
       if (recv_message(client_sock) < 0) {
-        perror("Échec de la réception du message du client");
+        perror("❌ Échec de la réception du message du client");
       } else {
         print_pairs();
       }
@@ -299,6 +311,6 @@ int main() {
   close(auc_sock);
   free_pairs();
 
-  printf("Réseau P2P fermé\n");
+  printf("👋 Réseau P2P fermé\n");
   return EXIT_SUCCESS;
 }
