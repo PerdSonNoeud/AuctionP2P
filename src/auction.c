@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <arpa/inet.h>
-#include <errno.h>
 #include "include/auction.h"
 #include "include/sockets.h"
 #include "include/message.h"
@@ -187,10 +186,6 @@ int handle_auction_message(int auc_sock, int m_send) {
       break;
 
     case CODE_ENCHERE: // Code 9 - Enchère d'un pair
-      if (pSystem.my_id == msg->id) {
-        free_message(msg);
-        return 0; // Ignore messages from ourselves
-      }
       printf("Enchère reçue - ID: %d, NUMV: %u, PRIX: %u\n", msg->id, msg->numv, msg->prix);
       handle_bid(m_send, msg);
       break;
@@ -836,22 +831,7 @@ int make_bid(int m_send) {
     return -1;
   }
   free(buffer);
-  pthread_mutex_lock(&auction_mutex);
-  if (!is_auction_finished(auction_id)) {
-    // Mise à jour temporaire pour l'affichage
-    unsigned int old_price = auction->current_price;
-
-    auction->current_price = price;
-    auction->id_dernier_prop = pSystem.my_id;
-    auction->last_bid_time = time(NULL);
-
-    printf("Prix local mis à jour de %u à %u, en attente de confirmation...\n", old_price, price);
-
-    // Afficher les informations mises à jour
-    pthread_mutex_unlock(&auction_mutex);
-    display_auctions();
-  } else {
-    pthread_mutex_unlock(&auction_mutex);
+  if (is_auction_finished(auction_id)) {
     printf("Attention: L'enchère pourrait être terminée\n");
   }
   return 1;
