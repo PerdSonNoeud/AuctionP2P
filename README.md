@@ -79,8 +79,8 @@ Le système utilise une architecture modulaire :
 1. **Cloner le projet**
 
 ```bash
-git clone https://moule.informatique.univ-paris-diderot.fr/jinc/projet-reseau-2024-2025.git
-cd projet-reseau-2024-2025
+git clone https://github.com/PerdSonNoeud/AuctionP2P.git
+cd AuctionP2P
 ```
 
 2. **Compiler le projet**
@@ -162,7 +162,7 @@ Système   : CODE=7|ID|IP|PORT|NB|[ID|IP|PORT|CLE]...
 ## 📁 Structure du projet
 
 ```bash
-projet-reseau-2024-2025/
+AuctionP2P/
 ├── src/
 │   ├── main.c              # Point d'entrée principal
 │   ├── pairs.c             # Gestion des pairs P2P
@@ -185,7 +185,10 @@ projet-reseau-2024-2025/
 
 ## 👥 Contributeurs
 
-- **Développeurs principaux** : JIN Cristophe, PIGET Mathéo, MELILA Yanis
+- **Développeurs principaux** : 
+    [JIN Christophe](https://github.com/PerdSonNoeud), 
+    [PIGET Mathéo](https://github.com/Matheo-Piget), 
+    [MELILA Yanis](https://github.com/melilayanis)
 - **Contexte** : Projet universitaire L3 Informatique - Programmation Réseau
 
 ---
